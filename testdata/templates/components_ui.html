@@ -1,0 +1,16 @@
+@component("TodoItem", title, completed) {
+  <article style="padding:0.75rem 1rem;border:1px solid #e5e7eb;border-radius:12px;background:white;display:flex;justify-content:space-between;gap:1rem;align-items:center;">
+    <div>
+      <strong>${title}</strong>
+      <div style="color:#666">Completed: ${completed}</div>
+    </div>
+    <div>@slot</div>
+  </article>
+}
+
+@component("SectionCard", title) {
+  <section style="padding:1rem;border:1px solid #ddd;border-radius:16px;background:#fffdf7;">
+    <header><h2 style="margin-top:0">${title}</h2></header>
+    <div>@slot</div>
+  </section>
+}

@@ -1,0 +1,62 @@
+@// TAB 3: SLIDERS & RANGES
+@// Uses: @reactive for live values, @for for stars, @if/@else for star color
+
+<div data-tab-panel="sliders" style="display: none;">
+    @render("SectionCard", {"heading": "Range Inputs with Live Values & Star Rating", "sectionLabel": "Sliders & Ranges"}) {
+        <div style="display: flex; flex-direction: column; gap: 1.25rem; margin-top: 0.6rem;">
+            @for(slider in [{"key": "experience", "label": "Experience Level", "color": "#3b82f6", "step": 1, "gradient": "linear-gradient(90deg, #3b82f6, #8b5cf6)"}, {"key": "satisfaction", "label": "Satisfaction", "color": "#22c55e", "step": 5, "gradient": "linear-gradient(90deg, #ef4444, #f59e0b, #22c55e)"}, {"key": "volume", "label": "Volume", "color": "#f59e0b", "step": 1, "gradient": ""}]) {
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                        <label style="font-size: 0.8rem; font-weight: 600; color: #475569;">${slider.label}</label>
+                        @reactive(sliders) {
+                            <span style="font-size: 0.8rem; font-weight: 700; color: ${slider.color};">
+                                @switch(slider.key) {
+                                    @case("experience") { ${sliders.experience}% }
+                                    @case("satisfaction") { ${sliders.satisfaction}% }
+                                    @case("volume") { ${sliders.volume}% }
+                                }
+                            </span>
+                        }
+                    </div>
+                    <input type="range" data-spl-model="sliders.${slider.key}" min="0" max="100" step="${slider.step}" style="width: 100%; accent-color: ${slider.color};" />
+                    @if(slider.gradient) {
+                        @reactive(sliders) {
+                            <div style="height: 0.5rem; background: #e2e8f0; border-radius: 9999px; margin-top: 0.35rem; overflow: hidden;">
+                                <div style="height: 100%; background: ${slider.gradient}; border-radius: 9999px; width: @switch(slider.key) { @case("experience") { ${sliders.experience} } @case("satisfaction") { ${sliders.satisfaction} } }%; transition: width 0.1s;"></div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            <div>
+                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Rating</label>
+                <div data-spl-ref="starRating" style="display: flex; gap: 0.35rem; align-items: center;">
+                    @for(star in [1, 2, 3, 4, 5]) {
+                        <button on:click="setRating" data-rating="${star}" style="font-size: 1.25rem; background: none; border: none; cursor: pointer; padding: 0; line-height: 1;">
+                            @if(star <= rating) {
+                                <span class="spl-star" style="color: #f59e0b;">&#9733;</span>
+                            } @else {
+                                <span class="spl-star" style="color: #d1d5db;">&#9733;</span>
+                            }
+                        </button>
+                    }
+                    @reactive(rating) {
+                        <span style="margin-left: 0.75rem; font-size: 0.8rem; color: #64748b;">${rating} / 5</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @render("PreviewCard", {"signalName": "sliders + rating", "bg": "#f0fdf4", "border": "#bbf7d0"}) {
+        @reactive(sliders, rating) {
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1.25rem; font-size: 0.8rem;">
+                <strong>Experience:</strong> <span>${sliders.experience}%</span>
+                <strong>Satisfaction:</strong> <span>${sliders.satisfaction}%</span>
+                <strong>Volume:</strong> <span>${sliders.volume}%</span>
+                <strong>Rating:</strong> <span>${rating} out of 5 stars</span>
+            </div>
+        }
+    }
+</div>

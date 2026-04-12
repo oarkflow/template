@@ -1,0 +1,59 @@
+@// SUBMISSION SUMMARY — @if + @reactive(summary) — only renders on submit
+@// Uses: @component StatCard, @reactive on snapshot signal
+
+@if(submitted) {
+    <div class="card" style="background: #f0fdf4; border-color: #86efac; margin-top: 0.35rem;">
+        <div class="section-label" style="color: #166534;">Submission Summary (computed at submit time)</div>
+        <h3 style="color: #166534;">Form Submitted Successfully</h3>
+
+        @reactive(summary) {
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                @render("StatCard", {"value": "${summary.completeness}%", "label": "Completeness", "bg": "#dcfce7", "color": "#166534"}) {}
+                @render("StatCard", {"value": "${summary.overallScore}", "label": "Overall Score", "bg": "#dbeafe", "color": "#1e40af"}) {}
+                @render("StatCard", {"value": "${summary.ratingLabel}", "label": "Rating: ${summary.rating}/5", "bg": "#fef9c3", "color": "#854d0e"}) {}
+                @render("StatCard", {"value": "${summary.submittedAt}", "label": "Submitted At", "bg": "#fce7f3", "color": "#9d174d"}) {}
+            </div>
+
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1.25rem; font-size: 0.8rem; line-height: 1.5;">
+                <strong>Full Name:</strong> <span>${summary.fullName}</span>
+                <strong>Email:</strong> <span>${summary.email}</span>
+                <strong>Age:</strong> <span>${summary.age}</span>
+                <strong>Phone:</strong> <span>${summary.phone}</span>
+                <strong>Website:</strong> <span>${summary.website}</span>
+                <strong>Bio:</strong> <span>${summary.bio}</span>
+                <strong>Country:</strong> <span>${summary.country}</span>
+                <strong>Role:</strong> <span>${summary.role}</span>
+                <strong>Gender:</strong> <span>${summary.gender}</span>
+                <strong>Priority:</strong> <span>${summary.priority}</span>
+                <strong>Newsletter:</strong> <span>${summary.newsletter}</span>
+                <strong>Terms:</strong> <span>${summary.terms}</span>
+                <strong>Experience:</strong> <span>${summary.experience}%</span>
+                <strong>Satisfaction:</strong> <span>${summary.satisfaction}%</span>
+                <strong>Volume:</strong> <span>${summary.volume}%</span>
+                <strong>Rating:</strong> <span>${summary.rating} / 5 (${summary.ratingLabel})</span>
+                <strong>Birth Date:</strong> <span>${summary.birthDate}</span>
+                <strong>Start Time:</strong> <span>${summary.startTime}</span>
+                <strong>Favorite Color:</strong>
+                <span style="display: flex; align-items: center; gap: 0.4rem;">
+                    <span style="width: 0.85rem; height: 0.85rem; border-radius: 50%; display: inline-block; background: ${summary.favColor}; border: 1px solid #d1d5db;"></span>
+                    ${summary.favColor}
+                </span>
+            </div>
+        }
+
+        <div style="margin-top: 0.6rem;">
+            <button on:click="dismissSubmit" style="padding: 0.5rem 1.25rem; border-radius: 0.375rem; border: 1px solid #86efac; background: white; color: #166534; cursor: pointer; font-size: 0.8rem;">
+                Dismiss
+            </button>
+        </div>
+    </div>
+} @else {
+    <div class="card" style="margin-top: 0.35rem;">
+        <div class="section-label">Submission Summary</div>
+        <h3>Awaiting Submission</h3>
+        <p style="font-size: 0.8rem; color: #64748b; line-height: 1.6;">
+            Submit the form from the left column to capture a snapshot of the current values.
+            The summary appears here and stays fixed while you review the tabs.
+        </p>
+    </div>
+}

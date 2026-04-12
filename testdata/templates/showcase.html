@@ -1,0 +1,139 @@
+@extends("layout.html")
+@define("content") {
+  <h1>${pageTitle}</h1>
+
+  @// --- Expressions & Filters ---
+  <section id="expressions">
+    <h2>Expressions &amp; Filters</h2>
+    <p>Welcome, ${userName | upper}!</p>
+    <p>Slug: ${pageTitle | slug}</p>
+    <p>Truncated: ${longText | truncate 20 "..."}</p>
+    <p>URL: ${searchQuery | urlencode}</p>
+    <p>Reversed: ${userName | reverse}</p>
+    <p>Title Case: ${lowercaseText | title}</p>
+    <p>Padded ID: ${userId | padstart 6 "0"}</p>
+  </section>
+
+  @// --- Conditionals ---
+  <section id="conditionals">
+    <h2>Conditionals</h2>
+    @if(isAdmin) {
+    <div class="admin-panel">
+      <p>Admin Controls</p>
+    </div>
+    } @elseif(isModerator) {
+    <div class="mod-panel">
+      <p>Moderator Controls</p>
+    </div>
+    } @else {
+    <div class="user-panel">
+      <p>Regular User View</p>
+    </div>
+    }
+  </section>
+
+  @// --- Loops with arrays ---
+  <section id="products">
+    <h2>Product Catalog</h2>
+    @for(product in products) {
+    <div class="product">
+      <h3>${product.name}</h3>
+      <p class="price">$${product.price}</p>
+      @if(product.onSale) {
+      <span class="sale-badge">SALE!</span>
+      }
+      <p>Tags:
+      @for(j, tag in product.tags) {
+        @if(j > 0) {, }${tag | lower}
+      }
+      </p>
+    </div>
+    } @empty {
+    <p class="no-products">No products available.</p>
+    }
+  </section>
+
+  @// --- Loop metadata ---
+  <section id="loop-meta">
+    <h2>Loop Metadata</h2>
+    <ul>
+    @for(color in colors) {
+      <li class="@if(loop.first) {first} @if(loop.last) {last}">
+        ${loop.index1}. ${color} (index=${loop.index}, first=${loop.first}, last=${loop.last})
+      </li>
+    }
+    </ul>
+  </section>
+
+  @// --- Hash iteration ---
+  <section id="config">
+    <h2>Configuration</h2>
+    <dl>
+    @for(key, val in settings) {
+      <dt>${key}</dt>
+      <dd>${val}</dd>
+    }
+    </dl>
+  </section>
+
+  @// --- Switch ---
+  <section id="status">
+    <h2>Status Display</h2>
+    @switch(orderStatus) {
+      @case("pending") {
+      <span class="badge yellow">Pending</span>
+      }
+      @case("shipped", "in_transit") {
+      <span class="badge blue">In Transit</span>
+      }
+      @case("delivered") {
+      <span class="badge green">Delivered</span>
+      }
+      @default {
+      <span class="badge gray">Unknown: ${orderStatus}</span>
+      }
+    }
+  </section>
+
+  @// --- Includes / Partials ---
+  <section id="cards">
+    <h2>Included Partials</h2>
+    @for(card in cards) {
+    @include("card.html", card)
+    }
+  </section>
+
+  @// --- Raw block (no parsing) ---
+  <section id="raw-demo">
+    <h2>Raw Block</h2>
+    <pre><code>
+    @raw {
+Template syntax reference:
+  ${expression}        - output (auto-escaped)
+  ${raw expression}    - output (unescaped)
+  ${expr | filter}     - piped through filter
+  @if(cond) { }        - conditional
+  @for(v in iter) { }  - loop
+  @switch(e) { }       - switch
+  @include("f.html")   - partial
+  @extends("l.html")   - layout inheritance
+  @raw { }             - literal (no parsing)
+  @// comment          - stripped comment
+    }
+    </code></pre>
+  </section>
+
+  @// --- Auto HTML escaping ---
+  <section id="escaping">
+    <h2>Auto Escaping</h2>
+    <p>Escaped: ${dangerousInput}</p>
+    <p>Raw: ${raw dangerousInput}</p>
+  </section>
+
+  @// --- Arithmetic in expressions ---
+  <section id="arithmetic">
+    <h2>Arithmetic</h2>
+    <p>Total items: ${itemCount * 2 + 1}</p>
+    <p>Discount: ${price * discount / 100}</p>
+  </section>
+}

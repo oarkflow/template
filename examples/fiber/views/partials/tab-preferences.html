@@ -1,0 +1,124 @@
+@// TAB 2: PREFERENCES
+@// Uses: @for over server data, @match for priority badges, data-spl-model
+
+<div data-tab-panel="preferences" style="display: none;">
+    @render("SectionCard", {"heading": "Select, Radio, Checkboxes & Search", "sectionLabel": "Preferences"}) {
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
+            @render("FormField", {"label": "Country (" + totalCountries + " available)"}) {
+                <select data-spl-model="prefs.country" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem; background: white;">
+                    @for(c in countries) {
+                        <option value="${c.Code}">${c.Name} (${c.Region})</option>
+                    }
+                </select>
+            }
+            @render("FormField", {"label": "Role"}) {
+                <select data-spl-model="prefs.role" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem; background: white;">
+                    @for(r in roles) {
+                        <option value="${r.Value}">${r.Label}</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.35rem;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">Role Permissions</span>
+            <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-role-perms" title="View role permissions">i</button>
+        </div>
+
+        <dialog id="dlg-role-perms">
+            <div class="dialog-header">
+                <h4>Role Permissions</h4>
+                <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <p style="margin-bottom: 0.5rem;">From <code>[]Role</code> struct &mdash; nested <code>[]string</code> permissions:</p>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    @for(r in roles) {
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <strong style="min-width: 120px;">${r.Label}:</strong>
+                            <span style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                                @for(perm in r.Permissions) {
+                                    <code style="background: #dbeafe; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.7rem;">${perm}</code>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </dialog>
+
+        <div style="margin-top: 0.75rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Priority Level</label>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                @for(p in priorities) {
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem;">
+                        <input type="radio" name="priority" value="${p}" data-spl-model="prefs.priority" />
+                        @match(p) {
+                            @case("low") {
+                                <span class="badge badge-green">${p | title}</span>
+                            }
+                            @case("medium") {
+                                <span class="badge badge-amber">${p | title}</span>
+                            }
+                            @case("high") {
+                                <span class="badge badge-red">${p | title}</span>
+                            }
+                            @case("critical") {
+                                <span class="badge badge-purple">${p | upper}</span>
+                            }
+                        }
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div style="margin-top: 0.75rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Gender</label>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                @for(g in ["male", "female", "other", "prefer-not"]) {
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem;">
+                        <input type="radio" name="gender" value="${g}" data-spl-model="prefs.gender" /> ${g | title | replace "-" " "}
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div style="margin-top: 0.75rem;">
+            <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Options</label>
+            @let(checkboxes = [{"model": "prefs.newsletter", "text": "Subscribe to newsletter"}, {"model": "prefs.notifications", "text": "Enable push notifications"}, {"model": "prefs.darkTheme", "text": "Dark theme"}, {"model": "prefs.terms", "text": "I agree to the terms and conditions"}])
+            <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+                @for(cb in checkboxes) {
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem;">
+                        <input type="checkbox" data-spl-model="${cb.model}" /> ${cb.text}
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 0.75rem;">
+            @render("FormField", {"label": "Search / Filter"}) {
+                <input type="search" data-spl-model="prefs.search" placeholder="Type to filter..." style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Tags (comma-separated)"}) {
+                <input type="text" data-spl-model="prefs.tags" placeholder="e.g. go, fiber, template" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+        </div>
+    }
+
+    @render("PreviewCard", {"signalName": "prefs", "bg": "#faf5ff", "border": "#e9d5ff"}) {
+        @reactive(prefs) {
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1.25rem; font-size: 0.8rem;">
+                <strong>Country:</strong> <span>${prefs.country}</span>
+                <strong>Role:</strong> <span>${prefs.role}</span>
+                <strong>Gender:</strong> <span>${prefs.gender}</span>
+                <strong>Priority:</strong> <span>${prefs.priority}</span>
+                <strong>Newsletter:</strong> <span>${prefs.newsletter}</span>
+                <strong>Notifications:</strong> <span>${prefs.notifications}</span>
+                <strong>Dark Theme:</strong> <span>${prefs.darkTheme}</span>
+                <strong>Terms:</strong> <span>${prefs.terms}</span>
+                <strong>Search:</strong> <span>${prefs.search}</span>
+                <strong>Tags:</strong> <span>${prefs.tags}</span>
+            </div>
+        }
+    }
+</div>

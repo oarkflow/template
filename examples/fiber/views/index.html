@@ -1,0 +1,59 @@
+@extends("layouts/main.html")
+@define("content") {
+    <h2 style="font-size: 1.1rem; margin-bottom: 0.3rem;">
+        ${title}
+        <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-page-info" title="About this page">i</button>
+    </h2>
+
+    <dialog id="dlg-page-info">
+        <div class="dialog-header">
+            <h4>About This Page</h4>
+            <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
+        </div>
+        <div class="dialog-body">
+            <p>Demonstrates <code>${"@component"}</code>, <code>${"@reactive"}</code>,
+            <code>${"@handler"}</code>, <code>${"@for"}</code>, <code>${"@match"}</code>,
+            <code>${"@let"}</code>, <code>data-spl-model</code>,
+            <code>data-spl-api-*</code>, <code>${"@import"}</code>,
+            <code>${"@include"}</code>, and filters.</p>
+        </div>
+    </dialog>
+
+    @// ═══════════════════════════════════════════════════════════════════════
+    @// IMPORT REUSABLE COMPONENTS from separate files
+    @// ═══════════════════════════════════════════════════════════════════════
+
+    @import("components/form-field.html")
+    @import("components/stat-card.html")
+    @import("components/section-card.html")
+    @import("components/preview-card.html")
+
+    @// ═══════════════════════════════════════════════════════════════════════
+    @// INCLUDE PARTIALS — signals, handlers, and top-level sections
+    @// ═══════════════════════════════════════════════════════════════════════
+
+    @include("partials/signals.html")
+    @include("partials/handlers.html")
+    @include("partials/server-stats.html")
+    @include("partials/quote-api.html")
+
+    @// ═══════════════════════════════════════════════════════════════════════
+    @// TWO-COLUMN LAYOUT — Tabs + Actions (left) + Submission Summary (right)
+    @// ═══════════════════════════════════════════════════════════════════════
+
+    <div class="two-col">
+        <div class="col-left">
+            @include("partials/tab-nav.html")
+            @include("partials/tab-personal.html")
+            @include("partials/tab-preferences.html")
+            @include("partials/tab-sliders.html")
+            @include("partials/tab-extras.html")
+            @include("partials/tab-api.html")
+            @include("partials/form-actions.html")
+        </div>
+
+        @include("partials/live-preview.html")
+    </div>
+
+    @include("partials/features-table.html")
+}

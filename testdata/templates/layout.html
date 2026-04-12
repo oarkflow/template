@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${siteTitle} - ${pageTitle}</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">${siteTitle}</a>
+      @for(link in navLinks) {
+      <a href="${link.href}">${link.label}</a>
+      }
+    </nav>
+  </header>
+  <main>
+    @block("content") {
+    <p>Default page content</p>
+    }
+  </main>
+  <footer>
+    <p>${raw footerHTML}</p>
+  </footer>
+</body>
+</html>

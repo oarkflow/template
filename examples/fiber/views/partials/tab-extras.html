@@ -1,0 +1,42 @@
+@// TAB 4: DATE, TIME & COLOR
+@// Uses: @reactive for live color preview, @component rendering
+
+<div data-tab-panel="extras" style="display: none;">
+    @render("SectionCard", {"heading": "Specialized Input Types", "sectionLabel": "Date, Time & Color"}) {
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
+            @render("FormField", {"label": "Birth Date"}) {
+                <input type="date" data-spl-model="extras.birthDate" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Start Time"}) {
+                <input type="time" data-spl-model="extras.startTime" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Favorite Color"}) {
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <input type="color" data-spl-model="extras.favColor" style="width: 3rem; height: 2.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; cursor: pointer; padding: 0.15rem;" />
+                    @reactive(extras) {
+                        <span style="font-family: monospace; font-size: 0.8rem; color: #475569;">${extras.favColor}</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @render("PreviewCard", {"signalName": "extras", "bg": "#fef3c7", "border": "#fde68a"}) {
+        @reactive(extras) {
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1.25rem; font-size: 0.8rem;">
+                <strong>Birth Date:</strong> <span>${extras.birthDate}</span>
+                <strong>Start Time:</strong> <span>${extras.startTime}</span>
+                <strong>Favorite Color:</strong>
+                <span style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="width: 1rem; height: 1rem; border-radius: 50%; display: inline-block; background: ${extras.favColor}; border: 1px solid #d1d5db;"></span>
+                    ${extras.favColor}
+                </span>
+            </div>
+
+            <div style="text-align: center; margin-top: 0.5rem;">
+                <div style="width: 100%; height: 2.5rem; border-radius: 0.375rem; background: ${extras.favColor}; border: 1px solid #e2e8f0;"></div>
+                <p style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;">Selected color: <code>${extras.favColor}</code></p>
+            </div>
+        }
+    }
+</div>

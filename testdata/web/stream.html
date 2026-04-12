@@ -1,0 +1,18 @@
+<html>
+<body>
+  <h1>${title}</h1>
+  @stream {
+    <p>Initial chunk</p>
+  }
+  @defer {
+    <section>Deferred chunk loaded</section>
+  } @fallback {
+    <section>Loading deferred chunk...</section>
+  }
+  @lazy(ready) {
+    <footer>Ready content</footer>
+  } @fallback {
+    <footer>Not ready yet</footer>
+  }
+</body>
+</html>

@@ -1,0 +1,147 @@
+@// ═══════════════════════════════════════════════════════════════════════
+@// HANDLERS — named event callbacks (use setSignal, signal, toggle)
+@// Demonstrates React-style updater functions with object spreading
+@// ═══════════════════════════════════════════════════════════════════════
+
+@handler(switchTab) {
+    var tabs = document.querySelectorAll('[data-tab-panel]');
+    var buttons = document.querySelectorAll('[data-tab-btn]');
+    var target = event.currentTarget.getAttribute('data-tab-btn');
+    tabs.forEach(function(p) {
+        p.style.display = p.getAttribute('data-tab-panel') === target ? 'block' : 'none';
+    });
+    buttons.forEach(function(b) {
+        var isActive = b.getAttribute('data-tab-btn') === target;
+        b.style.borderBottomColor = isActive ? '#3b82f6' : 'transparent';
+        b.style.color = isActive ? '#1e40af' : '#64748b';
+    });
+}
+
+@handler(setRating) {
+    var n = Number(event.currentTarget.getAttribute('data-rating'));
+    setSignal(rating, n);
+    // Use ref() instead of document.getElementById
+    var container = ref('starRating');
+    if(container) {
+        var stars = container.querySelectorAll('.spl-star');
+        for(var i = 0; i < stars.length; i++) {
+            stars[i].style.color = (i < n) ? '#f59e0b' : '#d1d5db';
+        }
+    }
+}
+
+@handler(updateCharCount) {
+    var p = signal('personal');
+    setSignal(charCount, (p.bio || '').length);
+}
+
+@handler(submitForm) {
+    var p = signal('personal');
+    var pr = signal('prefs');
+    var sl = signal('sliders');
+    var ex = signal('extras');
+    var r = signal('rating');
+    var filled = 0;
+    if(p.firstName) filled++;
+    if(p.lastName) filled++;
+    if(p.email) filled++;
+    if(p.password) filled++;
+    if(p.phone) filled++;
+    if(p.website) filled++;
+    if(p.bio) filled++;
+    if(Number(p.age) !== 25) filled++;
+    var labels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+
+    // React-style updater with spreading — setSignal(signal, fn(prev) => ({...prev, ...updates}))
+    setSignal(summary, function(prev) {
+        return {
+            ...prev,
+            fullName: ((p.firstName||'') + ' ' + (p.lastName||'')).trim() || 'Not provided',
+            email: p.email || '',
+            age: p.age || 0,
+            phone: p.phone || '',
+            website: p.website || '',
+            bio: p.bio || '',
+            country: pr.country || '',
+            role: pr.role || '',
+            gender: pr.gender || '',
+            priority: pr.priority || '',
+            newsletter: pr.newsletter,
+            terms: pr.terms,
+            experience: sl.experience || 0,
+            satisfaction: sl.satisfaction || 0,
+            volume: sl.volume || 0,
+            rating: r,
+            ratingLabel: labels[r] || '',
+            birthDate: ex.birthDate || '',
+            startTime: ex.startTime || '',
+            favColor: ex.favColor || '#ccc',
+            completeness: Math.round((filled / 8) * 100),
+            overallScore: Math.round((Number(sl.experience) + Number(sl.satisfaction) + (r * 20)) / 3),
+            submittedAt: new Date().toLocaleString()
+        };
+    });
+    setSignal(submitted, true);
+}
+
+@handler(dismissSubmit) {
+    setSignal(submitted, false);
+}
+
+@handler(resetAll) {
+    // Updater function with despreading — reset specific fields while preserving structure
+    setSignal(personal, function(prev) {
+        return {...prev, firstName:'', lastName:'', email:'', password:'', age:25, phone:'', website:'', bio:''};
+    });
+    setSignal(prefs, function(prev) {
+        return {...prev, country:'us', role:'developer', gender:'other', priority:'medium', newsletter:true, terms:false, darkTheme:false, notifications:true, search:'', tags:''};
+    });
+    setSignal(sliders, function(prev) {
+        return {...prev, experience:50, satisfaction:75, volume:30};
+    });
+    setSignal(rating, 3);
+    setSignal(extras, function(prev) {
+        return {...prev, birthDate:'1995-06-15', startTime:'09:00', favColor:'#3b82f6'};
+    });
+    setSignal(submitted, false);
+    setSignal(charCount, 0);
+    setSignal(apiResult, '');
+}
+
+@handler(focusFirstName) {
+    // ref() — access a named element directly, like React's useRef
+    var el = ref('firstNameInput');
+    if (el) { el.focus(); el.select(); }
+}
+
+@handler(focusEmail) {
+    var el = ref('emailInput');
+    if (el) { el.focus(); el.select(); }
+}
+
+@handler(highlightAllInputs) {
+    // selectAll() — query multiple elements by CSS selector
+    var inputs = selectAll('[data-spl-model^="personal."]');
+    inputs.forEach(function(el) {
+        el.style.outline = '2px solid #3b82f6';
+        el.style.outlineOffset = '1px';
+        setTimeout(function() { el.style.outline = ''; }, 1200);
+    });
+}
+
+@handler(scrollToPreview) {
+    // select() — query a single element by CSS selector
+    var el = select('[data-tab-panel="personal"] .card:last-child');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+@handler(openInfoDialog) {
+    var id = event.currentTarget.getAttribute('data-dialog');
+    var dlg = select('#' + id);
+    if (dlg && dlg.showModal) dlg.showModal();
+}
+
+@handler(closeInfoDialog) {
+    var dlg = event.currentTarget.closest('dialog');
+    if (dlg) dlg.close();
+}

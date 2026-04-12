@@ -1,0 +1,143 @@
+@extends("complete_reactive_layout.html")
+@import("components_ui.html")
+
+@component("StatCard", label, value, note = "") {
+  <article class="card">
+    <p class="muted">${label}</p>
+    <div class="metric">${value}</div>
+    @if(note) {
+    <small>${note}</small>
+    }
+  </article>
+}
+
+@component("PanelFrame") {
+  <section class="panel">
+    <header>@slot("header")</header>
+    <div>@slot</div>
+    <footer class="muted">@slot("footer")</footer>
+  </section>
+}
+
+@define("content") {
+  @signal(counter = counter)
+  @signal(panelOpen = panelOpen)
+
+  <section class="hero">
+    <p class="muted">All-in-one example</p>
+    <h1>${pageTitle}</h1>
+    <p>${description | capitalize}</p>
+
+    <div class="controls">
+      @click("Increment Counter", counter, "inc", "1")
+      @click("Toggle Panel", panelOpen, "toggle")
+    </div>
+
+    <p>Bound counter: @bind(counter)</p>
+
+    @effect(counter) {
+      <p>Effect output counter = ${counter}</p>
+    }
+  </section>
+
+  <section class="grid">
+    @render("StatCard", {"label": "Signals", "value": counter, "note": "Hydrated with SSR"})
+    @render("StatCard", {"label": "Blocks", "value": pageTitle, "note": "Layout + define"})
+    @render("StatCard", {"label": "Components", "value": featureCount, "note": "Props + loops"})
+  </section>
+
+  @reactive(counter, panelOpen) {
+    @render("PanelFrame") {
+      @fill("header") {
+        <h2 class="slot-title">Reactive Control Panel</h2>
+      }
+
+      <p>Counter value: ${counter}</p>
+
+      @if(panelOpen) {
+      <div>
+        <p>The panel is open and reacting to client-side signal changes.</p>
+        <ul>
+        @for(feature in features) {
+          <li>${feature.name} - ${feature.status | title}</li>
+        }
+        </ul>
+      </div>
+      } @else {
+      <div>
+        <p>The panel is closed. Toggle it to reveal the slot content and feature list.</p>
+      </div>
+      }
+
+      @fill("footer") {
+        Last updated by hydrated signal state
+      }
+    }
+  }
+
+  <section class="stream-shell">
+    <h2>Streaming / Lazy Sections</h2>
+    @stream {
+      <p>Immediate chunk rendered first.</p>
+    }
+    @defer {
+      <p>Deferred chunk has loaded.</p>
+    } @fallback {
+      <p>Deferred chunk is loading...</p>
+    }
+    @lazy(panelOpen) {
+      <p>Lazy content is visible because panelOpen is true.</p>
+    } @fallback {
+      <p>Lazy content hidden until panelOpen becomes true.</p>
+    }
+  </section>
+
+  <section class="panel">
+    <h2>Filters / Include-style Data Rendering</h2>
+    <p>User: ${userName | upper}</p>
+    <p>Search: ${searchQuery | urlencode}</p>
+    <p>Slug: ${pageTitle | slug}</p>
+    <p>Summary: ${summary | truncate 80 "..."}</p>
+  </section>
+
+  @signal(todoDraft = "")
+  @signal(todoResult = "Click refresh to load TODOs")
+  <section class="panel">
+    <h2>Template TODO CRUD using API calls</h2>
+    <p class="muted">This section hydrates client-side and talks to the TODO CRUD API server.</p>
+    <form class="controls">
+      <input type="text" name="title" data-spl-model="todoDraft" placeholder="New todo title" value="" style="padding:0.65rem 0.85rem;border-radius:999px;border:1px solid #d1d5db;min-width:18rem;" />
+      <input type="hidden" name="priority" value="high" />
+      <input type="hidden" name="notes" value="created from complete reactive showcase" />
+      <button
+        type="submit"
+        data-spl-api-method="POST"
+        data-spl-api-url="${apiBase}/api/todos"
+        data-spl-api-form="closest"
+        data-spl-api-target="todoResult"
+        data-spl-api-reset="todoDraft"
+      >Create TODO</button>
+      <button
+        type="button"
+        data-spl-api-method="GET"
+        data-spl-api-url="${apiBase}/api/todos"
+        data-spl-api-target="todoResult"
+      >Refresh TODOs</button>
+    </form>
+    <pre data-spl-bind="todoResult" data-spl-attr="textContent" style="white-space:pre-wrap;background:#0f172a;color:#e5e7eb;padding:1rem;border-radius:12px;overflow:auto;">Click refresh to load TODOs</pre>
+  </section>
+
+  @reactive(counter, panelOpen, todoDraft) {
+    @render("SectionCard", {"title": "Imported Components + Attribute Events"}) {
+      <p>These components are loaded from an imported template file.</p>
+      <div class="controls">
+        <button on:click="counter += 1">Attribute Increment</button>
+        <button on:click="toggle(panelOpen)">Attribute Toggle</button>
+        <input type="text" bind:value="todoDraft" placeholder="Bound draft via attribute" style="padding:0.65rem 0.85rem;border-radius:999px;border:1px solid #d1d5db;min-width:16rem;" />
+      </div>
+      @render("TodoItem", {"title": "Imported component demo", "completed": panelOpen}) {
+        <span class="muted">counter=${counter} draft=${todoDraft}</span>
+      }
+    }
+  }
+}

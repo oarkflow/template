@@ -1,0 +1,90 @@
+@// TAB 1: PERSONAL INFORMATION
+@// Uses: @component rendering, data-spl-model, @reactive, @effect, filters
+@// Demonstrates: data-spl-ref, ref(), select(), selectAll()
+
+<div data-tab-panel="personal" style="display: block;">
+    @render("SectionCard", {"heading": "Text, Email, Password, Phone, URL & Textarea", "sectionLabel": "Personal Information"}) {
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.6rem;">
+            @render("FormField", {"label": "First Name"}) {
+                <input type="text" data-spl-ref="firstNameInput" data-spl-model="personal.firstName" placeholder="Enter first name" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Last Name"}) {
+                <input type="text" data-spl-model="personal.lastName" placeholder="Enter last name" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.6rem;">
+            @render("FormField", {"label": "Email"}) {
+                <input type="email" data-spl-ref="emailInput" data-spl-model="personal.email" placeholder="you@example.com" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Password"}) {
+                <input type="password" data-spl-model="personal.password" placeholder="Enter password" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; margin-top: 0.6rem;">
+            @render("FormField", {"label": "Age"}) {
+                <input type="number" data-spl-model="personal.age" min="${config.MinAge}" max="${config.MaxAge}" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Phone"}) {
+                <input type="tel" data-spl-model="personal.phone" placeholder="+1 (555) 000-0000" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+            @render("FormField", {"label": "Website"}) {
+                <input type="url" data-spl-model="personal.website" placeholder="https://example.com" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem;" />
+            }
+        </div>
+
+        <div style="margin-top: 0.6rem;">
+            @render("FormField", {"label": "Bio / About"}) {
+                <textarea data-spl-ref="bioInput" data-spl-model="personal.bio" rows="2" placeholder="Tell us about yourself..." on:input="updateCharCount" style="width: 100%; padding: 0.35rem 0.6rem; border-radius: 0.3rem; border: 1px solid #d1d5db; font-size: 0.8rem; resize: vertical; font-family: inherit;"></textarea>
+                @reactive(charCount) {
+                    <div style="text-align: right; font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem;">
+                        ${charCount} / ${bioLimit} characters
+                    </div>
+                }
+            }
+        </div>
+
+        <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">Element Refs &amp; Selectors</span>
+            <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-refs-info" title="About refs & selectors">i</button>
+            <button on:click="focusFirstName" style="padding: 0.3rem 0.75rem; border-radius: 0.3rem; border: 1px solid #3b82f6; background: #eff6ff; color: #1e40af; font-size: 0.75rem; cursor: pointer;">
+                ref() &rarr; Focus First Name
+            </button>
+            <button on:click="focusEmail" style="padding: 0.3rem 0.75rem; border-radius: 0.3rem; border: 1px solid #8b5cf6; background: #f5f3ff; color: #6b21a8; font-size: 0.75rem; cursor: pointer;">
+                ref() &rarr; Focus Email
+            </button>
+            <button on:click="highlightAllInputs" style="padding: 0.3rem 0.75rem; border-radius: 0.3rem; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e; font-size: 0.75rem; cursor: pointer;">
+                selectAll() &rarr; Highlight Inputs
+            </button>
+            <button on:click="scrollToPreview" style="padding: 0.3rem 0.75rem; border-radius: 0.3rem; border: 1px solid #22c55e; background: #f0fdf4; color: #166534; font-size: 0.75rem; cursor: pointer;">
+                select() &rarr; Scroll to Preview
+            </button>
+        </div>
+
+        <dialog id="dlg-refs-info">
+            <div class="dialog-header">
+                <h4>Element Refs &amp; Selectors</h4>
+                <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <p><code>ref('firstNameInput')</code> returns the DOM element with <code>data-spl-ref="firstNameInput"</code>.</p>
+                <p style="margin-top: 0.5rem;"><code>select(css)</code> / <code>selectAll(css)</code> are shorthand for <code>document.querySelector</code> / <code>document.querySelectorAll</code>.</p>
+            </div>
+        </dialog>
+    }
+
+    @render("PreviewCard", {"signalName": "personal", "bg": "#eff6ff", "border": "#bfdbfe"}) {
+        @reactive(personal) {
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1.25rem; font-size: 0.8rem;">
+                <strong>Full Name:</strong> <span>${personal.firstName} ${personal.lastName}</span>
+                <strong>Email:</strong> <span>${personal.email}</span>
+                <strong>Password:</strong> <span>${personal.password}</span>
+                <strong>Age:</strong> <span>${personal.age}</span>
+                <strong>Phone:</strong> <span>${personal.phone}</span>
+                <strong>Website:</strong> <span>${personal.website}</span>
+                <strong>Bio:</strong> <span>${personal.bio}</span>
+            </div>
+        }
+    }
+</div>

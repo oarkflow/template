@@ -1,0 +1,23 @@
+@// ═══════════════════════════════════════════════════════════════════════
+@// SERVER-SIDE COMPUTED VALUES — @let and @computed
+@// ═══════════════════════════════════════════════════════════════════════
+
+@let(totalCountries = len(countries))
+@let(totalRoles = len(roles))
+@let(bioLimit = config.MaxBioLength)
+@computed(priorityCount = len(priorities))
+
+@// ═══════════════════════════════════════════════════════════════════════
+@// SIGNALS — reactive client-side state
+@// ═══════════════════════════════════════════════════════════════════════
+
+@signal(personal = {"firstName": "", "lastName": "", "email": "", "password": "", "age": 25, "phone": "", "website": "", "bio": ""})
+@signal(prefs = {"country": "us", "role": "developer", "gender": "other", "priority": "medium", "newsletter": true, "terms": false, "darkTheme": false, "notifications": true, "search": "", "tags": ""})
+@signal(sliders = {"experience": 50, "satisfaction": 75, "volume": 30})
+@signal(rating = 3)
+@signal(extras = {"birthDate": "1995-06-15", "startTime": "09:00", "favColor": "#3b82f6"})
+@signal(submitted = false)
+@signal(summary = {"fullName": "", "email": "", "age": 0, "phone": "", "website": "", "bio": "", "country": "", "role": "", "gender": "", "priority": "", "newsletter": false, "terms": false, "experience": 0, "satisfaction": 0, "volume": 0, "rating": 0, "ratingLabel": "", "birthDate": "", "startTime": "", "favColor": "#ccc", "completeness": 0, "overallScore": 0, "submittedAt": ""})
+@signal(apiResult = "")
+@signal(quote = {"text": "Click the button to load a quote", "author": ""})
+@signal(charCount = 0)

@@ -1,0 +1,6 @@
+@component("PreviewCard", signalName, bg, border) {
+    <div class="card" style="background: ${bg}; border-color: ${border};">
+        <div class="section-label">Live Preview &mdash; signal: <code>${signalName}</code></div>
+        @slot
+    </div>
+}
