@@ -1,0 +1,200 @@
+@// TAB 6: SHOWCASE
+@// Demonstrates features from web-demo and ssr examples:
+@// @click, @bind, @effect, @reactive, TODO CRUD, @lazy, @empty,
+@// @switch, filters, auto-escaping, named slots, prop aliases
+
+<div data-tab-panel="showcase" style="display: none;">
+
+    @// ─── Counter & Toggle Panel (SSR reactive) ───────────────────────────
+
+    @render("SectionCard", {"heading": "Reactive Counter & Toggle", "sectionLabel": "SSR Hydration"}) {
+        <p style="margin-bottom: 0.5rem;">
+            Counter: <strong>@bind(showcaseCounter)</strong>
+        </p>
+        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+            @click("Increment", showcaseCounter, "inc", "1")
+            <button on:click="showcaseCounter -= 1">Decrement</button>
+            @click("Toggle Panel", showcasePanel, "toggle")
+        </div>
+
+        @effect(showcaseCounter) {
+            <div style="padding: 0.35rem 0.75rem; background: #f0f9ff; border-radius: 6px; font-size: 0.85rem;">
+                Effect: counter is now <strong>${showcaseCounter}</strong>
+            </div>
+        }
+
+        @reactive(showcaseCounter, showcasePanel) {
+            <div style="margin-top: 0.5rem; padding: 0.75rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <strong>Reactive view &mdash; count:</strong> ${showcaseCounter}
+                @if(showcasePanel) {
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: #ecfdf5; border-radius: 6px;">
+                        <strong style="color: #059669;">Panel is open!</strong>
+                        <p style="margin: 0.25rem 0 0; font-size: 0.85rem;">This content appears when the panel signal is toggled on.</p>
+                    </div>
+                } @else {
+                    <p style="margin: 0.35rem 0 0; color: #64748b; font-size: 0.85rem;">Panel is closed. Click "Toggle Panel" to open.</p>
+                }
+            </div>
+        }
+    }
+
+    @// ─── TODO CRUD via API ───────────────────────────────────────────────
+
+    @render("SectionCard", {"heading": "TODO CRUD via API", "sectionLabel": "data-spl-api-form"}) {
+        <form style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <input type="text" name="title" data-spl-model="todoDraft" placeholder="New todo title"
+                   style="flex: 1; min-width: 150px; padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem;" />
+            <input type="hidden" name="priority" value="medium" />
+            <input type="hidden" name="notes" value="created from showcase" />
+            <button type="submit"
+                    data-spl-api-method="POST"
+                    data-spl-api-url="/api/todos"
+                    data-spl-api-form="closest"
+                    data-spl-api-target="todoResult"
+                    data-spl-api-reset="todoDraft"
+                    style="padding: 0.4rem 1rem; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 600; cursor: pointer; font-size: 0.85rem;">
+                Create
+            </button>
+        </form>
+        <div style="margin-top: 0.5rem;">
+            <button type="button"
+                    data-spl-api-method="GET"
+                    data-spl-api-url="/api/todos"
+                    data-spl-api-target="todoResult"
+                    style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; font-size: 0.85rem;">
+                Refresh TODOs
+            </button>
+        </div>
+        <pre data-spl-bind="todoResult" data-spl-attr="textContent"
+             style="margin-top: 0.5rem; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">Click 'Refresh TODOs' or create one below...</pre>
+    }
+
+    @// ─── Filters Showcase ────────────────────────────────────────────────
+
+    @render("SectionCard", {"heading": "Filters", "sectionLabel": "Built-in Pipes"}) {
+        <table style="width: 100%; font-size: 0.85rem;">
+            <thead>
+                <tr><th style="text-align:left;">Filter</th><th style="text-align:left;">Input</th><th style="text-align:left;">Output</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>upper</code></td><td>hello world</td><td>${"hello world" | upper}</td></tr>
+                <tr><td><code>title</code></td><td>hello world</td><td>${"hello world" | title}</td></tr>
+                <tr><td><code>slug</code></td><td>Hello World!</td><td>${"Hello World!" | slug}</td></tr>
+                <tr><td><code>truncate</code></td><td>A long sentence that gets cut</td><td>${"A long sentence that gets cut off after thirty chars" | truncate 30 "..."}</td></tr>
+                <tr><td><code>urlencode</code></td><td>spl template engine</td><td>${"spl template engine" | urlencode}</td></tr>
+                <tr><td><code>length</code></td><td>[a, b, c, d]</td><td>${priorities | length}</td></tr>
+            </tbody>
+        </table>
+    }
+
+    @// ─── @switch / @case ─────────────────────────────────────────────────
+
+    @render("SectionCard", {"heading": "@switch / @case", "sectionLabel": "Multi-way Branching"}) {
+        @let(orderStatus = "shipped")
+        <p style="font-size: 0.85rem;">Order status: <code>${orderStatus}</code></p>
+        @switch(orderStatus) {
+            @case("pending") {
+                <span class="badge" style="background:#f59e0b;color:white;">Pending</span>
+            }
+            @case("shipped", "in_transit") {
+                <span class="badge" style="background:#3b82f6;color:white;">In Transit</span>
+            }
+            @case("delivered") {
+                <span class="badge" style="background:#22c55e;color:white;">Delivered</span>
+            }
+            @default {
+                <span class="badge">Unknown</span>
+            }
+        }
+    }
+
+    @// ─── @for with @empty fallback ───────────────────────────────────────
+
+    @render("SectionCard", {"heading": "@for with @empty", "sectionLabel": "Loop Fallback"}) {
+        <div style="font-size: 0.85rem;">
+            <strong>Items (populated):</strong>
+            <ul style="margin: 0.25rem 0;">
+                @for(i, item in ["apples", "bread", "cheese"]) {
+                    <li>#${i + 1}: ${item | title} (first=${loop.first}, last=${loop.last})</li>
+                }
+            </ul>
+            <strong>Items (empty):</strong>
+            @for(x in []) {
+                <li>${x}</li>
+            } @empty {
+                <p style="color: #64748b; font-style: italic; margin: 0.25rem 0;">This list is empty.</p>
+            }
+        </div>
+    }
+
+    @// ─── @lazy / @fallback ───────────────────────────────────────────────
+
+    @render("SectionCard", {"heading": "@lazy / @fallback", "sectionLabel": "Conditional Rendering"}) {
+        <div style="font-size: 0.85rem;">
+            @for(item in [{"name": "Signals", "ready": true}, {"name": "Streaming", "ready": false}, {"name": "Hot reload", "ready": true}]) {
+                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0;">
+                    <span>${item.name}:</span>
+                    @lazy(item.ready) {
+                        <span class="badge" style="background:#22c55e;color:white;">Ready</span>
+                    } @fallback {
+                        <span class="badge" style="background:#94a3b8;color:white;">Pending</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @// ─── Auto-escaping & raw output ──────────────────────────────────────
+
+    @render("SectionCard", {"heading": "Auto-Escaping", "sectionLabel": "XSS Prevention"}) {
+        @let(dangerousInput = "<script>alert('xss')</script>")
+        <div style="font-size: 0.85rem;">
+            <p><strong>Escaped (safe):</strong> <code>${dangerousInput}</code></p>
+            <p><strong>Raw (opt-in):</strong> <code>${raw dangerousInput}</code></p>
+        </div>
+    }
+
+    @// ─── Named Slots with @fill ──────────────────────────────────────────
+
+    @component("ShowcasePanel") {
+        <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; margin: 0.5rem 0;">
+            <div style="background: #f1f5f9; padding: 0.5rem 0.75rem; font-weight: 600; border-bottom: 1px solid #d1d5db; font-size: 0.85rem;">
+                @slot("header")
+            </div>
+            <div style="padding: 0.75rem; font-size: 0.85rem;">
+                @slot
+            </div>
+            <div style="background: #f8fafc; padding: 0.4rem 0.75rem; font-size: 0.75rem; color: #64748b; border-top: 1px solid #e2e8f0;">
+                @slot("footer")
+            </div>
+        </div>
+    }
+
+    @render("SectionCard", {"heading": "Named Slots", "sectionLabel": "@slot / @fill"}) {
+        @render("ShowcasePanel") {
+            @fill("header") { User Profile }
+            <p style="margin:0;"><strong>Name:</strong> Alice &mdash; <strong>Role:</strong> Administrator</p>
+            @fill("footer") { Last login: 2 hours ago }
+        }
+        @render("ShowcasePanel") {
+            @fill("header") { System Status }
+            <p style="margin:0; color: #059669;">All systems operational.</p>
+            @fill("footer") { Updated just now }
+        }
+    }
+
+    @// ─── Prop Aliases & Defaults ─────────────────────────────────────────
+
+    @component("InfoCard", title as heading = "Untitled", subtitle = "No description", color = "#3b82f6") {
+        <div style="border: 2px solid ${color}; border-radius: 8px; padding: 0.75rem; margin: 0.35rem 0;">
+            <h4 style="margin: 0 0 0.25rem; color: ${color}; font-size: 0.9rem;">${heading}</h4>
+            <p style="margin: 0; color: #64748b; font-size: 0.85rem;">${subtitle}</p>
+        </div>
+    }
+
+    @render("SectionCard", {"heading": "Prop Aliases & Defaults", "sectionLabel": "title as heading = \"Untitled\""}) {
+        @render("InfoCard", {"title": "Custom Card", "subtitle": "All props set", "color": "#ef4444"})
+        @render("InfoCard", {"title": "Partial Props"})
+        @render("InfoCard")
+    }
+</div>

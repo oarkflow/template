@@ -199,6 +199,30 @@ type parser struct {
 	pos int
 }
 
+// posInfo returns a "line:col" string for the current parser position for error messages.
+func (p *parser) posInfo() string {
+	line := 1
+	col := 1
+	end := p.pos
+	if end > len(p.src) {
+		end = len(p.src)
+	}
+	for i := 0; i < end; i++ {
+		if p.src[i] == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+	}
+	return fmt.Sprintf("%d:%d", line, col)
+}
+
+// errorf returns a formatted error prefixed with the current line:col position.
+func (p *parser) errorf(format string, args ...any) error {
+	return fmt.Errorf("at %s: %w", p.posInfo(), fmt.Errorf(format, args...))
+}
+
 func parse(src string) ([]Node, error) {
 	p := &parser{src: []rune(src)}
 	return p.parseNodes(false)
@@ -225,12 +249,12 @@ func (p *parser) peekAt(offset int) rune {
 	return p.src[i]
 }
 func (p *parser) startsWith(s string) bool {
-	runes := []rune(s)
-	if p.remaining() < len(runes) {
+	if p.remaining() < len(s) {
 		return false
 	}
-	for i, r := range runes {
-		if p.src[p.pos+i] != r {
+	// Fast path for ASCII-only strings (all directives are ASCII)
+	for i := 0; i < len(s); i++ {
+		if int(p.src[p.pos+i]) != int(s[i]) {
 			return false
 		}
 	}
@@ -542,7 +566,7 @@ func (p *parser) parseNodes(inBlock bool) ([]Node, error) {
 	}
 
 	if inBlock {
-		return nil, fmt.Errorf("unexpected end of template: unclosed block")
+		return nil, p.errorf("unexpected end of template: unclosed block")
 	}
 
 	flushText()
@@ -591,7 +615,7 @@ func (p *parser) parseExpr() (*ExprNode, error) {
 		}
 	}
 	if depth != 0 {
-		return nil, fmt.Errorf("unclosed expression ${...}")
+		return nil, p.errorf("unclosed expression ${...}")
 	}
 
 	content := buf.String()
@@ -755,16 +779,16 @@ func (p *parser) parseIf() (*IfNode, error) {
 	p.advanceN(3) // skip '@if'
 	cond, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@if: %w", err)
+		return nil, p.errorf("@if: %w", err)
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@if: expected '{' after condition")
+		return nil, p.errorf("@if: expected '{' after condition")
 	}
 	p.advance() // skip '{'
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@if body: %w", err)
+		return nil, p.errorf("@if body: %w", err)
 	}
 	node.Branches = append(node.Branches, IfBranch{Cond: cond, Body: body})
 
@@ -775,28 +799,28 @@ func (p *parser) parseIf() (*IfNode, error) {
 			p.advanceN(7) // skip '@elseif'
 			cond, err := p.readParenExpr()
 			if err != nil {
-				return nil, fmt.Errorf("@elseif: %w", err)
+				return nil, p.errorf("@elseif: %w", err)
 			}
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@elseif: expected '{'")
+				return nil, p.errorf("@elseif: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@elseif body: %w", err)
+				return nil, p.errorf("@elseif body: %w", err)
 			}
 			node.Branches = append(node.Branches, IfBranch{Cond: cond, Body: body})
 		} else if p.startsWith("@else") && !p.startsWith("@elseif") {
 			p.advanceN(5) // skip '@else'
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@else: expected '{'")
+				return nil, p.errorf("@else: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@else body: %w", err)
+				return nil, p.errorf("@else body: %w", err)
 			}
 			node.Else = body
 			break
@@ -813,7 +837,7 @@ func (p *parser) parseFor() (*ForNode, error) {
 	p.advanceN(4) // skip '@for'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@for: %w", err)
+		return nil, p.errorf("@for: %w", err)
 	}
 
 	node := &ForNode{}
@@ -821,7 +845,7 @@ func (p *parser) parseFor() (*ForNode, error) {
 	inner = strings.TrimSpace(inner)
 	inIdx := strings.Index(inner, " in ")
 	if inIdx < 0 {
-		return nil, fmt.Errorf("@for: expected 'VAR in EXPR' syntax, got: %s", inner)
+		return nil, p.errorf("@for: expected 'VAR in EXPR' syntax, got: %s", inner)
 	}
 	vars := strings.TrimSpace(inner[:inIdx])
 	node.Iter = strings.TrimSpace(inner[inIdx+4:])
@@ -836,12 +860,12 @@ func (p *parser) parseFor() (*ForNode, error) {
 
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@for: expected '{'")
+		return nil, p.errorf("@for: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@for body: %w", err)
+		return nil, p.errorf("@for body: %w", err)
 	}
 	node.Body = body
 
@@ -851,12 +875,12 @@ func (p *parser) parseFor() (*ForNode, error) {
 		p.advanceN(6)
 		p.skipWhitespaceAndNewlines()
 		if p.peek() != '{' {
-			return nil, fmt.Errorf("@empty: expected '{'")
+			return nil, p.errorf("@empty: expected '{'")
 		}
 		p.advance()
 		empty, err := p.parseNodes(true)
 		if err != nil {
-			return nil, fmt.Errorf("@empty body: %w", err)
+			return nil, p.errorf("@empty body: %w", err)
 		}
 		node.Empty = empty
 	}
@@ -869,13 +893,13 @@ func (p *parser) parseSwitchDirective() (*SwitchNode, error) {
 	p.advanceN(7) // skip '@switch'
 	expr, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@switch: %w", err)
+		return nil, p.errorf("@switch: %w", err)
 	}
 	node := &SwitchNode{Expr: expr}
 
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@switch: expected '{'")
+		return nil, p.errorf("@switch: expected '{'")
 	}
 	p.advance() // skip outer '{'
 
@@ -883,7 +907,7 @@ func (p *parser) parseSwitchDirective() (*SwitchNode, error) {
 	for {
 		p.skipWhitespaceAndNewlines()
 		if p.eof() {
-			return nil, fmt.Errorf("@switch: unclosed block")
+			return nil, p.errorf("@switch: unclosed block")
 		}
 		if p.peek() == '}' {
 			p.advance()
@@ -893,34 +917,34 @@ func (p *parser) parseSwitchDirective() (*SwitchNode, error) {
 			p.advanceN(5)
 			values, err := p.readParenExpr()
 			if err != nil {
-				return nil, fmt.Errorf("@case: %w", err)
+				return nil, p.errorf("@case: %w", err)
 			}
 			// values can be comma-separated
 			valParts := splitCaseValues(values)
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@case: expected '{'")
+				return nil, p.errorf("@case: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@case body: %w", err)
+				return nil, p.errorf("@case body: %w", err)
 			}
 			node.Cases = append(node.Cases, SwitchCase{Values: valParts, Body: body})
 		} else if p.startsWith("@default") {
 			p.advanceN(8)
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@default: expected '{'")
+				return nil, p.errorf("@default: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@default body: %w", err)
+				return nil, p.errorf("@default body: %w", err)
 			}
 			node.Default = body
 		} else {
-			return nil, fmt.Errorf("@switch: unexpected content, expected @case or @default")
+			return nil, p.errorf("@switch: unexpected content, expected @case or @default")
 		}
 	}
 
@@ -932,20 +956,20 @@ func (p *parser) parseMatchDirective() (*MatchNode, error) {
 	p.advanceN(6) // skip '@match'
 	expr, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@match: %w", err)
+		return nil, p.errorf("@match: %w", err)
 	}
 	node := &MatchNode{Expr: expr}
 
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@match: expected '{'")
+		return nil, p.errorf("@match: expected '{'")
 	}
 	p.advance() // skip outer '{'
 
 	for {
 		p.skipWhitespaceAndNewlines()
 		if p.eof() {
-			return nil, fmt.Errorf("@match: unclosed block")
+			return nil, p.errorf("@match: unclosed block")
 		}
 		if p.peek() == '}' {
 			p.advance()
@@ -955,34 +979,34 @@ func (p *parser) parseMatchDirective() (*MatchNode, error) {
 			p.advanceN(5)
 			patternStr, err := p.readParenExpr()
 			if err != nil {
-				return nil, fmt.Errorf("@match @case: %w", err)
+				return nil, p.errorf("@match @case: %w", err)
 			}
 			// Split pattern and guard on " if " (but not inside strings/parens)
 			pattern, guard := splitPatternGuard(patternStr)
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@match @case: expected '{'")
+				return nil, p.errorf("@match @case: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@match @case body: %w", err)
+				return nil, p.errorf("@match @case body: %w", err)
 			}
 			node.Cases = append(node.Cases, MatchCase{PatternExpr: pattern, Guard: guard, Body: body})
 		} else if p.startsWith("@default") {
 			p.advanceN(8)
 			p.skipWhitespaceAndNewlines()
 			if p.peek() != '{' {
-				return nil, fmt.Errorf("@match @default: expected '{'")
+				return nil, p.errorf("@match @default: expected '{'")
 			}
 			p.advance()
 			body, err := p.parseNodes(true)
 			if err != nil {
-				return nil, fmt.Errorf("@match @default body: %w", err)
+				return nil, p.errorf("@match @default body: %w", err)
 			}
 			node.Default = body
 		} else {
-			return nil, fmt.Errorf("@match: unexpected content, expected @case or @default")
+			return nil, p.errorf("@match: unexpected content, expected @case or @default")
 		}
 	}
 
@@ -1069,7 +1093,7 @@ func (p *parser) parseRaw() (*RawNode, error) {
 	p.advanceN(4) // skip '@raw'
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@raw: expected '{'")
+		return nil, p.errorf("@raw: expected '{'")
 	}
 	p.advance() // skip '{'
 	var buf strings.Builder
@@ -1091,7 +1115,7 @@ func (p *parser) parseRaw() (*RawNode, error) {
 		}
 	}
 	if depth != 0 {
-		return nil, fmt.Errorf("@raw: unclosed block")
+		return nil, p.errorf("@raw: unclosed block")
 	}
 	return &RawNode{Text: buf.String()}, nil
 }
@@ -1101,11 +1125,11 @@ func (p *parser) parseInclude() (*IncludeNode, error) {
 	p.advanceN(8) // skip '@include'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@include: %w", err)
+		return nil, p.errorf("@include: %w", err)
 	}
 	parts := splitCaseValues(inner)
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("@include: path is required")
+		return nil, p.errorf("@include: path is required")
 	}
 	path := unquote(strings.TrimSpace(parts[0]))
 	node := &IncludeNode{Path: path}
@@ -1120,11 +1144,11 @@ func (p *parser) parseImportDirective() (*ImportNode, error) {
 	p.advanceN(7) // skip '@import'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@import: %w", err)
+		return nil, p.errorf("@import: %w", err)
 	}
 	path := unquote(strings.TrimSpace(inner))
 	if path == "" {
-		return nil, fmt.Errorf("@import: path is required")
+		return nil, p.errorf("@import: path is required")
 	}
 	return &ImportNode{Path: path}, nil
 }
@@ -1134,34 +1158,34 @@ func (p *parser) parseHandlerDirective() (*HandlerNode, error) {
 	p.advanceN(8) // skip '@handler'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@handler: %w", err)
+		return nil, p.errorf("@handler: %w", err)
 	}
 	trimmed := strings.TrimSpace(inner)
 	if trimmed == "" {
-		return nil, fmt.Errorf("@handler: handler name is required")
+		return nil, p.errorf("@handler: handler name is required")
 	}
 	if idx := findFirstAssignEquals(inner); idx >= 0 {
 		name := strings.TrimSpace(inner[:idx])
 		expr := strings.TrimSpace(inner[idx+1:])
 		if name == "" || expr == "" {
-			return nil, fmt.Errorf("@handler: name and expression are required")
+			return nil, p.errorf("@handler: name and expression are required")
 		}
 		return &HandlerNode{Name: name, Expr: expr}, nil
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@handler: expected '{' for multiline handler body")
+		return nil, p.errorf("@handler: expected '{' for multiline handler body")
 	}
 	body, err := p.readRawBlock()
 	if err != nil {
-		return nil, fmt.Errorf("@handler body: %w", err)
+		return nil, p.errorf("@handler body: %w", err)
 	}
 	return &HandlerNode{Name: trimmed, Body: strings.TrimSpace(body)}, nil
 }
 
 func (p *parser) readRawBlock() (string, error) {
 	if p.peek() != '{' {
-		return "", fmt.Errorf("expected '{'")
+		return "", p.errorf("expected '{'")
 	}
 	p.advance()
 	var buf strings.Builder
@@ -1196,7 +1220,7 @@ func (p *parser) readRawBlock() (string, error) {
 		buf.WriteRune(p.advance())
 	}
 	if depth != 0 {
-		return "", fmt.Errorf("unclosed handler block")
+		return "", p.errorf("unclosed handler block")
 	}
 	return buf.String(), nil
 }
@@ -1206,7 +1230,7 @@ func (p *parser) parseExtends() (*ExtendsNode, error) {
 	p.advanceN(8) // skip '@extends'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@extends: %w", err)
+		return nil, p.errorf("@extends: %w", err)
 	}
 	return &ExtendsNode{Path: unquote(strings.TrimSpace(inner))}, nil
 }
@@ -1216,17 +1240,17 @@ func (p *parser) parseBlock() (*BlockNode, error) {
 	p.advanceN(6) // skip '@block'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@block: %w", err)
+		return nil, p.errorf("@block: %w", err)
 	}
 	name := unquote(strings.TrimSpace(inner))
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@block: expected '{'")
+		return nil, p.errorf("@block: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@block body: %w", err)
+		return nil, p.errorf("@block body: %w", err)
 	}
 	return &BlockNode{Name: name, Body: body}, nil
 }
@@ -1236,17 +1260,17 @@ func (p *parser) parseDefine() (*DefineNode, error) {
 	p.advanceN(7) // skip '@define'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@define: %w", err)
+		return nil, p.errorf("@define: %w", err)
 	}
 	name := unquote(strings.TrimSpace(inner))
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@define: expected '{'")
+		return nil, p.errorf("@define: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@define body: %w", err)
+		return nil, p.errorf("@define body: %w", err)
 	}
 	return &DefineNode{Name: name, Body: body}, nil
 }
@@ -1256,7 +1280,7 @@ func (p *parser) parseComponent() (*ComponentNode, error) {
 	p.advanceN(10) // skip '@component'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@component: %w", err)
+		return nil, p.errorf("@component: %w", err)
 	}
 
 	// Parse name and optional prop declarations
@@ -1288,7 +1312,7 @@ func (p *parser) parseComponent() (*ComponentNode, error) {
 			for _, tok := range propTokens {
 				pd, err := parsePropDef(tok)
 				if err != nil {
-					return nil, fmt.Errorf("@component %q: %w", name, err)
+					return nil, p.errorf("@component %q: %w", name, err)
 				}
 				props = append(props, pd)
 			}
@@ -1299,12 +1323,12 @@ func (p *parser) parseComponent() (*ComponentNode, error) {
 
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@component: expected '{'")
+		return nil, p.errorf("@component: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@component body: %w", err)
+		return nil, p.errorf("@component body: %w", err)
 	}
 	return &ComponentNode{Name: name, Props: props, Body: body}, nil
 }
@@ -1392,7 +1416,7 @@ func (p *parser) parseRender() (*RenderNode, error) {
 	p.advanceN(7) // skip '@render'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@render: %w", err)
+		return nil, p.errorf("@render: %w", err)
 	}
 
 	// Split into name and optional props expression
@@ -1431,7 +1455,7 @@ func (p *parser) parseRender() (*RenderNode, error) {
 		p.advance()
 		children, err = p.parseNodes(true)
 		if err != nil {
-			return nil, fmt.Errorf("@render body: %w", err)
+			return nil, p.errorf("@render body: %w", err)
 		}
 	}
 
@@ -1446,7 +1470,7 @@ func (p *parser) parseSlot() (*SlotNode, error) {
 	if p.peek() == '(' {
 		inner, err := p.readParenExpr()
 		if err != nil {
-			return nil, fmt.Errorf("@slot: %w", err)
+			return nil, p.errorf("@slot: %w", err)
 		}
 		name = unquote(strings.TrimSpace(inner))
 	}
@@ -1458,17 +1482,17 @@ func (p *parser) parseFill() (*FillNode, error) {
 	p.advanceN(5) // skip '@fill'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@fill: %w", err)
+		return nil, p.errorf("@fill: %w", err)
 	}
 	name := unquote(strings.TrimSpace(inner))
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@fill: expected '{'")
+		return nil, p.errorf("@fill: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@fill body: %w", err)
+		return nil, p.errorf("@fill body: %w", err)
 	}
 	return &FillNode{Name: name, Body: body}, nil
 }
@@ -1478,16 +1502,16 @@ func (p *parser) parseLet() (*LetNode, error) {
 	p.advanceN(4) // skip '@let'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@let: %w", err)
+		return nil, p.errorf("@let: %w", err)
 	}
 	idx := findFirstAssignEquals(inner)
 	if idx < 0 {
-		return nil, fmt.Errorf("@let: expected 'varName = expr' syntax")
+		return nil, p.errorf("@let: expected 'varName = expr' syntax")
 	}
 	varName := strings.TrimSpace(inner[:idx])
 	expr := strings.TrimSpace(inner[idx+1:])
 	if varName == "" || expr == "" {
-		return nil, fmt.Errorf("@let: variable name and expression are required")
+		return nil, p.errorf("@let: variable name and expression are required")
 	}
 	return &LetNode{VarName: varName, Expr: expr}, nil
 }
@@ -1497,16 +1521,16 @@ func (p *parser) parseComputed() (*ComputedNode, error) {
 	p.advanceN(9) // skip '@computed'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@computed: %w", err)
+		return nil, p.errorf("@computed: %w", err)
 	}
 	idx := findFirstAssignEquals(inner)
 	if idx < 0 {
-		return nil, fmt.Errorf("@computed: expected 'varName = expr' syntax")
+		return nil, p.errorf("@computed: expected 'varName = expr' syntax")
 	}
 	varName := strings.TrimSpace(inner[:idx])
 	expr := strings.TrimSpace(inner[idx+1:])
 	if varName == "" || expr == "" {
-		return nil, fmt.Errorf("@computed: variable name and expression are required")
+		return nil, p.errorf("@computed: variable name and expression are required")
 	}
 	return &ComputedNode{VarName: varName, Expr: expr}, nil
 }
@@ -1516,16 +1540,16 @@ func (p *parser) parseWatch() (*WatchNode, error) {
 	p.advanceN(6) // skip '@watch'
 	expr, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@watch: %w", err)
+		return nil, p.errorf("@watch: %w", err)
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@watch: expected '{'")
+		return nil, p.errorf("@watch: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@watch body: %w", err)
+		return nil, p.errorf("@watch body: %w", err)
 	}
 	return &WatchNode{Expr: strings.TrimSpace(expr), Body: body}, nil
 }
@@ -1535,16 +1559,16 @@ func (p *parser) parseSignal() (*SignalNode, error) {
 	p.advanceN(7) // skip '@signal'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@signal: %w", err)
+		return nil, p.errorf("@signal: %w", err)
 	}
 	idx := findFirstAssignEquals(inner)
 	if idx < 0 {
-		return nil, fmt.Errorf("@signal: expected 'name = expr' syntax")
+		return nil, p.errorf("@signal: expected 'name = expr' syntax")
 	}
 	name := strings.TrimSpace(inner[:idx])
 	expr := strings.TrimSpace(inner[idx+1:])
 	if name == "" || expr == "" {
-		return nil, fmt.Errorf("@signal: name and expression are required")
+		return nil, p.errorf("@signal: name and expression are required")
 	}
 	return &SignalNode{Name: name, InitialExpr: expr}, nil
 }
@@ -1554,11 +1578,11 @@ func (p *parser) parseBind() (*BindNode, error) {
 	p.advanceN(5) // skip '@bind'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@bind: %w", err)
+		return nil, p.errorf("@bind: %w", err)
 	}
 	parts := splitCaseValues(inner)
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("@bind: signal is required")
+		return nil, p.errorf("@bind: signal is required")
 	}
 	signal := strings.TrimSpace(parts[0])
 	attr := "textContent"
@@ -1566,7 +1590,7 @@ func (p *parser) parseBind() (*BindNode, error) {
 		attr = unquote(strings.TrimSpace(parts[1]))
 	}
 	if signal == "" {
-		return nil, fmt.Errorf("@bind: signal is required")
+		return nil, p.errorf("@bind: signal is required")
 	}
 	return &BindNode{Signal: signal, Attr: attr}, nil
 }
@@ -1576,7 +1600,7 @@ func (p *parser) parseEffect() (*EffectNode, error) {
 	p.advanceN(7) // skip '@effect'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@effect: %w", err)
+		return nil, p.errorf("@effect: %w", err)
 	}
 	deps := splitCaseValues(inner)
 	for i := range deps {
@@ -1584,12 +1608,12 @@ func (p *parser) parseEffect() (*EffectNode, error) {
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@effect: expected '{'")
+		return nil, p.errorf("@effect: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@effect body: %w", err)
+		return nil, p.errorf("@effect body: %w", err)
 	}
 	return &EffectNode{Deps: deps, Body: body}, nil
 }
@@ -1599,7 +1623,7 @@ func (p *parser) parseReactiveView() (*ReactiveViewNode, error) {
 	p.advanceN(9) // skip '@reactive'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@reactive: %w", err)
+		return nil, p.errorf("@reactive: %w", err)
 	}
 	deps := splitCaseValues(inner)
 	for i := range deps {
@@ -1607,12 +1631,12 @@ func (p *parser) parseReactiveView() (*ReactiveViewNode, error) {
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@reactive: expected '{'")
+		return nil, p.errorf("@reactive: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@reactive body: %w", err)
+		return nil, p.errorf("@reactive body: %w", err)
 	}
 	return &ReactiveViewNode{Deps: deps, Body: body}, nil
 }
@@ -1622,11 +1646,11 @@ func (p *parser) parseClick() (*ClickNode, error) {
 	p.advanceN(6) // skip '@click'
 	inner, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@click: %w", err)
+		return nil, p.errorf("@click: %w", err)
 	}
 	parts := splitCaseValues(inner)
 	if len(parts) < 3 {
-		return nil, fmt.Errorf("@click: expected label, signal, action")
+		return nil, p.errorf("@click: expected label, signal, action")
 	}
 	node := &ClickNode{
 		Label:  unquote(strings.TrimSpace(parts[0])),
@@ -1637,7 +1661,7 @@ func (p *parser) parseClick() (*ClickNode, error) {
 		node.Value = unquote(strings.TrimSpace(parts[3]))
 	}
 	if node.Label == "" || node.Signal == "" || node.Action == "" {
-		return nil, fmt.Errorf("@click: label, signal, and action are required")
+		return nil, p.errorf("@click: label, signal, and action are required")
 	}
 	return node, nil
 }
@@ -1647,12 +1671,12 @@ func (p *parser) parseStream() (*StreamNode, error) {
 	p.advanceN(7) // skip '@stream'
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@stream: expected '{'")
+		return nil, p.errorf("@stream: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@stream body: %w", err)
+		return nil, p.errorf("@stream body: %w", err)
 	}
 	return &StreamNode{Body: body}, nil
 }
@@ -1662,12 +1686,12 @@ func (p *parser) parseDefer() (*DeferNode, error) {
 	p.advanceN(6) // skip '@defer'
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@defer: expected '{'")
+		return nil, p.errorf("@defer: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@defer body: %w", err)
+		return nil, p.errorf("@defer body: %w", err)
 	}
 	p.skipWhitespaceAndNewlines()
 	var fallback []Node
@@ -1675,12 +1699,12 @@ func (p *parser) parseDefer() (*DeferNode, error) {
 		p.advanceN(9)
 		p.skipWhitespaceAndNewlines()
 		if p.peek() != '{' {
-			return nil, fmt.Errorf("@fallback: expected '{'")
+			return nil, p.errorf("@fallback: expected '{'")
 		}
 		p.advance()
 		fallback, err = p.parseNodes(true)
 		if err != nil {
-			return nil, fmt.Errorf("@fallback body: %w", err)
+			return nil, p.errorf("@fallback body: %w", err)
 		}
 	}
 	return &DeferNode{Body: body, Fallback: fallback}, nil
@@ -1691,16 +1715,16 @@ func (p *parser) parseLazy() (*LazyNode, error) {
 	p.advanceN(5) // skip '@lazy'
 	expr, err := p.readParenExpr()
 	if err != nil {
-		return nil, fmt.Errorf("@lazy: %w", err)
+		return nil, p.errorf("@lazy: %w", err)
 	}
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '{' {
-		return nil, fmt.Errorf("@lazy: expected '{'")
+		return nil, p.errorf("@lazy: expected '{'")
 	}
 	p.advance()
 	body, err := p.parseNodes(true)
 	if err != nil {
-		return nil, fmt.Errorf("@lazy body: %w", err)
+		return nil, p.errorf("@lazy body: %w", err)
 	}
 	p.skipWhitespaceAndNewlines()
 	var fallback []Node
@@ -1708,12 +1732,12 @@ func (p *parser) parseLazy() (*LazyNode, error) {
 		p.advanceN(9)
 		p.skipWhitespaceAndNewlines()
 		if p.peek() != '{' {
-			return nil, fmt.Errorf("@fallback: expected '{'")
+			return nil, p.errorf("@fallback: expected '{'")
 		}
 		p.advance()
 		fallback, err = p.parseNodes(true)
 		if err != nil {
-			return nil, fmt.Errorf("@fallback body: %w", err)
+			return nil, p.errorf("@fallback body: %w", err)
 		}
 	}
 	return &LazyNode{Expr: strings.TrimSpace(expr), Body: body, Fallback: fallback}, nil
@@ -1723,7 +1747,7 @@ func (p *parser) parseLazy() (*LazyNode, error) {
 func (p *parser) readParenExpr() (string, error) {
 	p.skipWhitespaceAndNewlines()
 	if p.peek() != '(' {
-		return "", fmt.Errorf("expected '('")
+		return "", p.errorf("expected '('")
 	}
 	p.advance() // skip '('
 	var buf strings.Builder
@@ -1747,7 +1771,7 @@ func (p *parser) readParenExpr() (string, error) {
 		}
 	}
 	if depth != 0 {
-		return "", fmt.Errorf("unclosed '('")
+		return "", p.errorf("unclosed '('")
 	}
 	return buf.String(), nil
 }

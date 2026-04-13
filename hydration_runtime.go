@@ -350,6 +350,7 @@ const moduleFocusStub = `SPL.captureFocus=function(){return null;};SPL.restoreFo
 
 // moduleBindings: applyBinding, bindingEvent, readBindingValue, patchBindings
 const moduleBindings = `SPL.applyBinding=function(el,prop,value){
+  if(value!=null && typeof value==='object'){value=JSON.stringify(value,null,2);}
   if(prop==='html'){el.innerHTML=value==null?'':String(value);return;}
   if(prop in el){el[prop]=value==null?'':value;return;}
   el.setAttribute(prop,value==null?'':String(value));
@@ -519,7 +520,7 @@ SPL.patchAPI=function(root){
       return;
     }
     el.addEventListener(eventName,function(ev){
-      if(ev && typeof ev.preventDefault==='function' && (eventName==='submit' || el.tagName==='FORM')){ev.preventDefault();}
+      if(ev && typeof ev.preventDefault==='function' && (eventName==='submit' || el.tagName==='FORM' || (el.type==='submit' && typeof el.closest==='function' && el.closest('form')))){ev.preventDefault();}
       run();
     });
   });
@@ -874,8 +875,13 @@ func assembleRuntime(features jsFeature, disableDebug bool) string {
 func detectFeatures(renderedHTML string, effects []hydrationEffect, views []hydrationView) jsFeature {
 	features := featCore | featScope // always needed
 
-	// Collect all sources to scan
-	var sources []string
+	// Effects or views exist → need focus
+	if len(effects) > 0 || len(views) > 0 {
+		features |= featFocus
+	}
+
+	// Scan each source individually to avoid allocating a joined string
+	sources := make([]string, 0, 1+len(effects)+len(views))
 	sources = append(sources, renderedHTML)
 	for _, e := range effects {
 		sources = append(sources, e.Source)
@@ -884,30 +890,25 @@ func detectFeatures(renderedHTML string, effects []hydrationEffect, views []hydr
 		sources = append(sources, v.Source)
 	}
 
-	combined := strings.Join(sources, "\n")
-
-	// Effects or views exist → need focus
-	if len(effects) > 0 || len(views) > 0 {
-		features |= featFocus
-	}
-
-	if strings.Contains(combined, "data-spl-bind") {
-		features |= featBindings
-	}
-	if strings.Contains(combined, "data-spl-on-") {
-		features |= featEvents
-	}
-	if strings.Contains(combined, "data-spl-model") {
-		features |= featModels
-	}
-	if strings.Contains(combined, "data-spl-api-") {
-		features |= featAPI
-	}
-	if strings.Contains(combined, "data-spl-if") || strings.Contains(combined, "data-spl-else") {
-		features |= featConditionals
-	}
-	if strings.Contains(combined, "data-spl-ref") {
-		features |= featRefs
+	for _, src := range sources {
+		if features&featBindings == 0 && strings.Contains(src, "data-spl-bind") {
+			features |= featBindings
+		}
+		if features&featEvents == 0 && strings.Contains(src, "data-spl-on-") {
+			features |= featEvents
+		}
+		if features&featModels == 0 && strings.Contains(src, "data-spl-model") {
+			features |= featModels
+		}
+		if features&featAPI == 0 && strings.Contains(src, "data-spl-api-") {
+			features |= featAPI
+		}
+		if features&featConditionals == 0 && (strings.Contains(src, "data-spl-if") || strings.Contains(src, "data-spl-else")) {
+			features |= featConditionals
+		}
+		if features&featRefs == 0 && strings.Contains(src, "data-spl-ref") {
+			features |= featRefs
+		}
 	}
 
 	return features

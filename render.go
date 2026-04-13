@@ -4,10 +4,22 @@ import (
 	"fmt"
 	"html"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/oarkflow/interpreter"
 )
+
+// Builder pool to reduce GC pressure from render allocations.
+var builderPool = sync.Pool{New: func() any { return &strings.Builder{} }}
+
+func getBuilder() *strings.Builder {
+	b := builderPool.Get().(*strings.Builder)
+	b.Reset()
+	return b
+}
+func putBuilder(b *strings.Builder) { builderPool.Put(b) }
 
 // slotContext holds the slot fills for the current component render.
 type slotContext struct {
@@ -18,36 +30,102 @@ type slotContext struct {
 // emptyHash is a shared empty hash to avoid allocations.
 var emptyHash = &interpreter.Hash{Pairs: map[interpreter.HashKey]interpreter.HashPair{}}
 
+// lazyHash wraps a map[string]any and converts values to interpreter.Object on demand.
+// This avoids the cost of converting all map entries upfront when only a few are accessed.
+type lazyHash struct {
+	data map[string]any
+}
+
+func (lh *lazyHash) Type() interpreter.ObjectType { return interpreter.HASH_OBJ }
+func (lh *lazyHash) Inspect() string              { return fmt.Sprintf("%v", lh.data) }
+
+// materialize converts the lazyHash to a real interpreter.Hash for use with interpreter.Eval.
+func (lh *lazyHash) materialize() *interpreter.Hash {
+	pairs := make(map[interpreter.HashKey]interpreter.HashPair, len(lh.data))
+	for k, v := range lh.data {
+		key := &interpreter.String{Value: k}
+		hk := cachedHashKey(k)
+		pairs[hk] = interpreter.HashPair{Key: key, Value: nativeToObject(v)}
+	}
+	return &interpreter.Hash{Pairs: pairs}
+}
+
+// toLazyObject wraps a map[string]any in a lazyHash for deferred conversion.
+// For other types, falls back to nativeToObject.
+func toLazyObject(v any) interpreter.Object {
+	switch val := v.(type) {
+	case nil:
+		return interpreter.NULL
+	case string:
+		return &interpreter.String{Value: val}
+	case int:
+		return &interpreter.Integer{Value: int64(val)}
+	case int64:
+		return &interpreter.Integer{Value: val}
+	case float64:
+		return &interpreter.Float{Value: val}
+	case bool:
+		return nativeBool(val)
+	case interpreter.Object:
+		return val
+	case map[string]any:
+		return &lazyHash{data: val}
+	case []any:
+		elements := make([]interpreter.Object, len(val))
+		for i, elem := range val {
+			elements[i] = toLazyObject(elem)
+		}
+		return &interpreter.Array{Elements: elements}
+	default:
+		return interpreter.ToObject(v)
+	}
+}
+
 // renderNodes renders a slice of nodes into a string.
 func (e *Engine) renderNodes(nodes []Node, data map[string]any, depth int) (string, error) {
 	if depth > e.MaxDepth {
 		return "", fmt.Errorf("max include depth (%d) exceeded", e.MaxDepth)
 	}
 
-	// Check for @extends — if present, do layout rendering
-	var extendsPath string
-	defines := make(map[string][]Node)
-	var regularNodes []Node
-
+	// Fast pre-scan: check if any special directives (extends/define/component/import) exist.
+	// The vast majority of render calls have none, so we avoid allocating the defines map.
+	hasSpecial := false
 	for _, n := range nodes {
-		switch v := n.(type) {
-		case *ExtendsNode:
-			extendsPath = v.Path
-		case *ImportNode:
-			continue
-		case *DefineNode:
-			defines[v.Name] = v.Body
-		case *ComponentNode:
-			e.mu.Lock()
-			e.Components[v.Name] = componentDef{Body: v.Body, Props: v.Props}
-			e.mu.Unlock()
-		default:
-			regularNodes = append(regularNodes, n)
+		switch n.(type) {
+		case *ExtendsNode, *DefineNode, *ComponentNode, *ImportNode:
+			hasSpecial = true
+		}
+		if hasSpecial {
+			break
 		}
 	}
 
-	if extendsPath != "" {
-		return e.renderLayout(extendsPath, defines, data, depth)
+	var regularNodes []Node
+	if hasSpecial {
+		var extendsPath string
+		defines := make(map[string][]Node)
+		regularNodes = make([]Node, 0, len(nodes))
+		for _, n := range nodes {
+			switch v := n.(type) {
+			case *ExtendsNode:
+				extendsPath = v.Path
+			case *ImportNode:
+				continue
+			case *DefineNode:
+				defines[v.Name] = v.Body
+			case *ComponentNode:
+				e.mu.Lock()
+				e.Components[v.Name] = componentDef{Body: v.Body, Props: v.Props}
+				e.mu.Unlock()
+			default:
+				regularNodes = append(regularNodes, n)
+			}
+		}
+		if extendsPath != "" {
+			return e.renderLayout(extendsPath, defines, data, depth)
+		}
+	} else {
+		regularNodes = nodes
 	}
 
 	// Use enclosed environment from the base env instead of creating a new global env
@@ -59,12 +137,34 @@ func (e *Engine) renderNodes(nodes []Node, data map[string]any, depth int) (stri
 	} else {
 		merged = make(map[string]any)
 	}
-	env := interpreter.NewEnclosedEnvironment(e.baseEnv)
+
+	// At depth 0 (top-level render), set data directly on baseEnv to avoid
+	// an extra NewEnclosedEnvironment allocation. Nested calls (includes) use
+	// an enclosed environment to isolate their scope.
+	var env *interpreter.Environment
+	if depth == 0 {
+		env = e.baseEnv
+	} else {
+		env = interpreter.NewEnclosedEnvironment(e.baseEnv)
+	}
 	for k, v := range merged {
-		env.Set(k, nativeToObject(v))
+		env.Set(k, toLazyObject(v))
 	}
 
-	var buf strings.Builder
+	buf := getBuilder()
+	defer putBuilder(buf)
+	// Estimate output size from static text nodes to reduce builder re-allocations.
+	if len(regularNodes) > 2 {
+		textSize := 0
+		for _, n := range regularNodes {
+			if t, ok := n.(*TextNode); ok {
+				textSize += len(t.Text)
+			}
+		}
+		if textSize > 0 {
+			buf.Grow(textSize + len(regularNodes)*16) // text + estimated dynamic content
+		}
+	}
 	for _, n := range regularNodes {
 		s, err := e.renderNode(n, env, data, depth)
 		if err != nil {
@@ -93,10 +193,11 @@ func (e *Engine) renderLayout(layoutPath string, defines map[string][]Node, data
 	}
 	env := interpreter.NewEnclosedEnvironment(e.baseEnv)
 	for k, v := range merged {
-		env.Set(k, nativeToObject(v))
+		env.Set(k, toLazyObject(v))
 	}
 
-	var buf strings.Builder
+	buf := getBuilder()
+	defer putBuilder(buf)
 	for _, n := range layoutNodes {
 		if block, ok := n.(*BlockNode); ok {
 			if defined, exists := defines[block.Name]; exists {
@@ -173,15 +274,7 @@ func (e *Engine) renderNode(n Node, env *interpreter.Environment, data map[strin
 
 	case *BlockNode:
 		// When encountered outside of layout context, just render the default body
-		var buf strings.Builder
-		for _, child := range v.Body {
-			s, err := e.renderNode(child, env, data, depth)
-			if err != nil {
-				return "", err
-			}
-			buf.WriteString(s)
-		}
-		return buf.String(), nil
+		return e.renderBody(v.Body, env, data, depth)
 
 	case *RenderNode:
 		return e.renderRender(v, env, data, depth)
@@ -254,13 +347,25 @@ func (e *Engine) renderExpr(n *ExprNode, env *interpreter.Environment) (string, 
 		return "", fmt.Errorf("expression ${%s}: %w", n.Expr, err)
 	}
 
-	// Fast path: no filters, string result — very common in templates
+	// Fast path: no filters — very common in templates
 	if len(n.Filters) == 0 {
-		if str, ok := obj.(*interpreter.String); ok {
+		switch v := obj.(type) {
+		case *interpreter.String:
 			if e.AutoEscape && !n.Raw {
-				return html.EscapeString(str.Value), nil
+				return html.EscapeString(v.Value), nil
 			}
-			return str.Value, nil
+			return v.Value, nil
+		case *interpreter.Integer:
+			return strconv.FormatInt(v.Value, 10), nil
+		case *interpreter.Float:
+			return strconv.FormatFloat(v.Value, 'g', -1, 64), nil
+		case *interpreter.Boolean:
+			if v.Value {
+				return "true", nil
+			}
+			return "false", nil
+		case *interpreter.Null:
+			return "", nil
 		}
 	}
 
@@ -332,25 +437,41 @@ func (e *Engine) renderFor(n *ForNode, env *interpreter.Environment, data map[st
 
 	switch v := iterObj.(type) {
 	case *interpreter.Array:
+		items = make([]iterItem, len(v.Elements))
 		for i, elem := range v.Elements {
-			items = append(items, iterItem{
+			items[i] = iterItem{
 				key:   &interpreter.Integer{Value: int64(i)},
 				value: elem,
-			})
+			}
 		}
 	case *interpreter.Hash:
 		// Sort keys for deterministic output
 		keys := make([]string, 0, len(v.Pairs))
-		keyMap := make(map[string]interpreter.HashPair)
+		keyMap := make(map[string]interpreter.HashPair, len(v.Pairs))
 		for _, pair := range v.Pairs {
 			k := pair.Key.Inspect()
 			keys = append(keys, k)
 			keyMap[k] = pair
 		}
 		sort.Strings(keys)
+		items = make([]iterItem, 0, len(keys))
 		for _, k := range keys {
 			pair := keyMap[k]
 			items = append(items, iterItem{key: pair.Key, value: pair.Value})
+		}
+	case *lazyHash:
+		// Sort keys for deterministic output
+		keys := make([]string, 0, len(v.data))
+		for k := range v.data {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		items = make([]iterItem, 0, len(keys))
+		for _, k := range keys {
+			items = append(items, iterItem{
+				key:   &interpreter.String{Value: k},
+				value: toLazyObject(v.data[k]),
+			})
 		}
 	default:
 		// Check for null/empty
@@ -370,11 +491,13 @@ func (e *Engine) renderFor(n *ForNode, env *interpreter.Environment, data map[st
 		return "", nil
 	}
 
-	var buf strings.Builder
+	buf := getBuilder()
+	defer putBuilder(buf)
 	length := len(items)
+	buf.Grow(length * 128) // heuristic: ~128 bytes per iteration output
 
-	// Create loop metadata hash once, update in-place each iteration
-	loopHash := makeLoopMeta(0, length)
+	// Create loop metadata once, update in-place each iteration
+	lm := newLoopMeta(length)
 
 	for i, item := range items {
 		// Set loop variables
@@ -383,9 +506,9 @@ func (e *Engine) renderFor(n *ForNode, env *interpreter.Environment, data map[st
 			env.Set(n.KeyVar, item.key)
 		}
 
-		// Update $loop metadata in-place
-		updateLoopMeta(loopHash, i, length)
-		env.Set("loop", loopHash)
+		// Update $loop metadata in-place (mutates Integer values, no allocs)
+		lm.update(i, length)
+		env.Set("loop", lm.hash)
 
 		s, err := e.renderBody(n.Body, env, data, depth)
 		if err != nil {
@@ -397,44 +520,55 @@ func (e *Engine) renderFor(n *ForNode, env *interpreter.Environment, data map[st
 	return buf.String(), nil
 }
 
-func makeLoopMeta(index, length int) *interpreter.Hash {
-	pairs := map[interpreter.HashKey]interpreter.HashPair{}
+// Pre-computed hash keys for loop metadata to avoid repeated allocations.
+var (
+	loopKeyIndex  = &interpreter.String{Value: "index"}
+	loopKeyIndex1 = &interpreter.String{Value: "index1"}
+	loopKeyFirst  = &interpreter.String{Value: "first"}
+	loopKeyLast   = &interpreter.String{Value: "last"}
+	loopKeyLength = &interpreter.String{Value: "length"}
 
-	addPair := func(name string, val interpreter.Object) {
-		key := &interpreter.String{Value: name}
-		pairs[key.HashKey()] = interpreter.HashPair{Key: key, Value: val}
-	}
+	loopHKIndex  = loopKeyIndex.HashKey()
+	loopHKIndex1 = loopKeyIndex1.HashKey()
+	loopHKFirst  = loopKeyFirst.HashKey()
+	loopHKLast   = loopKeyLast.HashKey()
+	loopHKLength = loopKeyLength.HashKey()
+)
 
-	addPair("index", &interpreter.Integer{Value: int64(index)})
-	addPair("index1", &interpreter.Integer{Value: int64(index + 1)})
-	addPair("first", nativeBool(index == 0))
-	addPair("last", nativeBool(index == length-1))
-	addPair("length", &interpreter.Integer{Value: int64(length)})
-
-	return &interpreter.Hash{Pairs: pairs}
+// loopMeta holds reusable Integer pointers to avoid per-iteration allocations.
+type loopMeta struct {
+	hash                    *interpreter.Hash
+	indexVal, index1Val     *interpreter.Integer
+	lengthVal               *interpreter.Integer
 }
 
-// updateLoopMeta updates an existing loop metadata hash in-place to avoid allocations.
-func updateLoopMeta(h *interpreter.Hash, index, length int) {
-	for k, pair := range h.Pairs {
-		key, ok := pair.Key.(*interpreter.String)
-		if !ok {
-			continue
-		}
-		switch key.Value {
-		case "index":
-			pair.Value = &interpreter.Integer{Value: int64(index)}
-			h.Pairs[k] = pair
-		case "index1":
-			pair.Value = &interpreter.Integer{Value: int64(index + 1)}
-			h.Pairs[k] = pair
-		case "first":
-			pair.Value = nativeBool(index == 0)
-			h.Pairs[k] = pair
-		case "last":
-			pair.Value = nativeBool(index == length-1)
-			h.Pairs[k] = pair
-		}
+func newLoopMeta(length int) *loopMeta {
+	lm := &loopMeta{
+		indexVal:  &interpreter.Integer{Value: 0},
+		index1Val: &interpreter.Integer{Value: 1},
+		lengthVal: &interpreter.Integer{Value: int64(length)},
+	}
+	pairs := map[interpreter.HashKey]interpreter.HashPair{
+		loopHKIndex:  {Key: loopKeyIndex, Value: lm.indexVal},
+		loopHKIndex1: {Key: loopKeyIndex1, Value: lm.index1Val},
+		loopHKFirst:  {Key: loopKeyFirst, Value: nativeBool(true)},
+		loopHKLast:   {Key: loopKeyLast, Value: nativeBool(length <= 1)},
+		loopHKLength: {Key: loopKeyLength, Value: lm.lengthVal},
+	}
+	lm.hash = &interpreter.Hash{Pairs: pairs}
+	return lm
+}
+
+func (lm *loopMeta) update(index, length int) {
+	lm.indexVal.Value = int64(index)
+	lm.index1Val.Value = int64(index + 1)
+	if pair, ok := lm.hash.Pairs[loopHKFirst]; ok {
+		pair.Value = nativeBool(index == 0)
+		lm.hash.Pairs[loopHKFirst] = pair
+	}
+	if pair, ok := lm.hash.Pairs[loopHKLast]; ok {
+		pair.Value = nativeBool(index == length-1)
+		lm.hash.Pairs[loopHKLast] = pair
 	}
 }
 
@@ -594,7 +728,8 @@ func (e *Engine) renderInclude(n *IncludeNode, env *interpreter.Environment, dat
 		}
 	}
 
-	var buf strings.Builder
+	buf := getBuilder()
+	defer putBuilder(buf)
 	for _, nd := range regularNodes {
 		s, err := e.renderNode(nd, env, data, depth+1)
 		if err != nil {
@@ -694,6 +829,7 @@ func (e *Engine) renderRender(n *RenderNode, env *interpreter.Environment, data 
 
 	// Set up props based on what we got
 	propsHash, isHash := propsObj.(*interpreter.Hash)
+	propsLazy, isLazy := propsObj.(*lazyHash)
 
 	if len(comp.Props) > 0 {
 		// Declared props: set only the declared variables
@@ -722,6 +858,24 @@ func (e *Engine) renderRender(n *RenderNode, env *interpreter.Environment, data 
 				}
 			}
 			_ = needsPropsRebuild // props hash was modified in-place
+		} else if isLazy {
+			// Lazy hash: look up prop values directly from the map
+			for _, pd := range comp.Props {
+				varName := pd.Name
+				if pd.Alias != "" {
+					varName = pd.Alias
+				}
+				if val, exists := propsLazy.data[pd.Name]; exists {
+					compEnv.Set(varName, toLazyObject(val))
+				} else if pd.Default != "" {
+					obj, err := e.evalExpr(pd.Default, env)
+					if err != nil {
+						return "", fmt.Errorf("@component %q prop %q default: %w", n.Name, pd.Name, err)
+					}
+					compEnv.Set(varName, obj)
+				}
+			}
+			// Keep lazyHash as props — fastDotAccess handles it for props.field access
 		} else {
 			// No props passed — build a hash with just defaults
 			pairs := make(map[interpreter.HashKey]interpreter.HashPair)
@@ -748,6 +902,11 @@ func (e *Engine) renderRender(n *RenderNode, env *interpreter.Environment, data 
 			for _, pair := range propsHash.Pairs {
 				compEnv.Set(objectToString(pair.Key), pair.Value)
 			}
+		} else if isLazy {
+			for k, v := range propsLazy.data {
+				compEnv.Set(k, toLazyObject(v))
+			}
+			// Keep lazyHash as props — fastDotAccess handles it for props.field access
 		}
 	}
 
@@ -765,15 +924,7 @@ func (e *Engine) renderRender(n *RenderNode, env *interpreter.Environment, data 
 	e.pushSlotContext(&slotContext{fills: fills, children: childrenStr})
 	defer e.popSlotContext()
 
-	var buf strings.Builder
-	for _, cn := range comp.Body {
-		s, err := e.renderNode(cn, compEnv, data, depth+1)
-		if err != nil {
-			return "", err
-		}
-		buf.WriteString(s)
-	}
-	return buf.String(), nil
+	return e.renderBody(comp.Body, compEnv, data, depth+1)
 }
 
 func (e *Engine) renderSlot(n *SlotNode) (string, error) {
@@ -793,7 +944,15 @@ func (e *Engine) renderSlot(n *SlotNode) (string, error) {
 }
 
 func (e *Engine) renderBody(nodes []Node, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
-	var buf strings.Builder
+	// Fast path: single node — avoid builder overhead
+	if len(nodes) == 1 {
+		return e.renderNode(nodes[0], env, data, depth)
+	}
+	if len(nodes) == 0 {
+		return "", nil
+	}
+	buf := getBuilder()
+	defer putBuilder(buf)
 	for _, n := range nodes {
 		s, err := e.renderNode(n, env, data, depth)
 		if err != nil {
@@ -835,6 +994,9 @@ func (e *Engine) renderWatch(n *WatchNode, env *interpreter.Environment, data ma
 	}
 	currentVal := objectToString(obj)
 
+	if e.watchState == nil {
+		e.watchState = make(map[string]string)
+	}
 	prevVal, seen := e.watchState[n.Expr]
 	if !seen || prevVal != currentVal {
 		e.watchState[n.Expr] = currentVal
@@ -943,9 +1105,9 @@ func objectToString(obj interpreter.Object) string {
 	case *interpreter.String:
 		return v.Value
 	case *interpreter.Integer:
-		return fmt.Sprintf("%d", v.Value)
+		return strconv.FormatInt(v.Value, 10)
 	case *interpreter.Float:
-		return fmt.Sprintf("%g", v.Value)
+		return strconv.FormatFloat(v.Value, 'g', -1, 64)
 	case *interpreter.Boolean:
 		if v.Value {
 			return "true"
@@ -987,18 +1149,30 @@ func objectToNative(obj interpreter.Object) any {
 			result[key] = objectToNative(pair.Value)
 		}
 		return result
+	case *lazyHash:
+		return v.data
 	default:
 		return obj.Inspect()
 	}
 }
 
-// isCompoundObject returns true if the object is a Hash or Array (not a simple scalar).
+// isCompoundObject returns true if the object is a Hash, lazyHash, or Array (not a simple scalar).
 func isCompoundObject(obj interpreter.Object) bool {
 	switch obj.(type) {
-	case *interpreter.Hash, *interpreter.Array:
+	case *interpreter.Hash, *interpreter.Array, *lazyHash:
 		return true
 	}
 	return false
+}
+
+// cloneHash creates a shallow copy of a Hash object (new map, same key/value pointers).
+// Used for cached constant hash results that may have pairs modified (e.g., default props).
+func cloneHash(h *interpreter.Hash) *interpreter.Hash {
+	pairs := make(map[interpreter.HashKey]interpreter.HashPair, len(h.Pairs))
+	for k, v := range h.Pairs {
+		pairs[k] = v
+	}
+	return &interpreter.Hash{Pairs: pairs}
 }
 
 // makePlaceholderHash creates a Hash with the same keys as the original,
@@ -1043,8 +1217,40 @@ func makePlaceholderObject(obj interpreter.Object, signalName string) interprete
 }
 
 // nativeToObject converts a Go native value to an interpreter Object.
-// Delegates to the interpreter's comprehensive ToObject which supports
-// structs, typed slices, typed maps, and all Go primitive types via reflection.
+// Fast-paths common types to avoid reflection overhead in interpreter.ToObject.
 func nativeToObject(v any) interpreter.Object {
-	return interpreter.ToObject(v)
+	switch val := v.(type) {
+	case nil:
+		return interpreter.NULL
+	case string:
+		return &interpreter.String{Value: val}
+	case int:
+		return &interpreter.Integer{Value: int64(val)}
+	case int64:
+		return &interpreter.Integer{Value: val}
+	case float64:
+		return &interpreter.Float{Value: val}
+	case bool:
+		return nativeBool(val)
+	case interpreter.Object:
+		return val
+	case map[string]any:
+		pairs := make(map[interpreter.HashKey]interpreter.HashPair, len(val))
+		for k, v := range val {
+			key := &interpreter.String{Value: k}
+			hk := cachedHashKey(k) // reuse cached hash key computation
+			pairs[hk] = interpreter.HashPair{Key: key, Value: nativeToObject(v)}
+		}
+		return &interpreter.Hash{Pairs: pairs}
+	case []any:
+		elements := make([]interpreter.Object, len(val))
+		for i, elem := range val {
+			elements[i] = nativeToObject(elem)
+		}
+		return &interpreter.Array{Elements: elements}
+	default:
+		// Fall back to interpreter's comprehensive ToObject which handles
+		// structs, typed slices, typed maps, and all Go types via reflection.
+		return interpreter.ToObject(v)
+	}
 }

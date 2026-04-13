@@ -172,7 +172,7 @@ func filterLast(val any, args ...string) string {
 }
 
 func filterLength(val any, args ...string) string {
-	return fmt.Sprintf("%d", len([]rune(str(val))))
+	return strconv.Itoa(len([]rune(str(val))))
 }
 
 func filterReverse(val any, args ...string) string {
@@ -188,7 +188,9 @@ func filterTruncate(val any, args ...string) string {
 	n := 50
 	suffix := "..."
 	if len(args) > 0 {
-		fmt.Sscanf(args[0], "%d", &n)
+		if v, err := strconv.Atoi(args[0]); err == nil {
+			n = v
+		}
 	}
 	if len(args) > 1 {
 		suffix = args[1]
@@ -247,7 +249,9 @@ func filterSplit(val any, args ...string) string {
 func filterRepeat(val any, args ...string) string {
 	n := 1
 	if len(args) > 0 {
-		fmt.Sscanf(args[0], "%d", &n)
+		if v, err := strconv.Atoi(args[0]); err == nil {
+			n = v
+		}
 	}
 	return strings.Repeat(str(val), n)
 }
@@ -257,7 +261,9 @@ func filterPadStart(val any, args ...string) string {
 	n := 0
 	pad := " "
 	if len(args) > 0 {
-		fmt.Sscanf(args[0], "%d", &n)
+		if v, err := strconv.Atoi(args[0]); err == nil {
+			n = v
+		}
 	}
 	if len(args) > 1 {
 		pad = args[1]
@@ -273,7 +279,9 @@ func filterPadEnd(val any, args ...string) string {
 	n := 0
 	pad := " "
 	if len(args) > 0 {
-		fmt.Sscanf(args[0], "%d", &n)
+		if v, err := strconv.Atoi(args[0]); err == nil {
+			n = v
+		}
 	}
 	if len(args) > 1 {
 		pad = args[1]
@@ -299,10 +307,26 @@ func filterWrap(val any, args ...string) string {
 	return before + s + after
 }
 
-// str converts any value to a string.
+// str converts any value to a string, optimized for common types.
 func str(val any) string {
 	if val == nil {
 		return ""
 	}
-	return fmt.Sprintf("%v", val)
+	switch v := val.(type) {
+	case string:
+		return v
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }

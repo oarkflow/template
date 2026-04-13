@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -311,6 +312,44 @@ func main() {
 		idx := quoteIdx % len(quotes)
 		quoteIdx++
 		return c.JSON(quotes[idx])
+	})
+
+	// --- TODO CRUD API (showcase tab) ---
+
+	var (
+		todoMu    sync.Mutex
+		todos     []map[string]any
+		todoNextID int
+	)
+
+	app.Get("/api/todos", func(c fiber.Ctx) error {
+		todoMu.Lock()
+		list := todos
+		todoMu.Unlock()
+		if list == nil {
+			list = []map[string]any{}
+		}
+		return c.JSON(list)
+	})
+
+	app.Post("/api/todos", func(c fiber.Ctx) error {
+		var form map[string]any
+		if err := c.Bind().JSON(&form); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid JSON"})
+		}
+		todoMu.Lock()
+		todoNextID++
+		todo := map[string]any{
+			"id":       todoNextID,
+			"title":    form["title"],
+			"priority": form["priority"],
+			"notes":    form["notes"],
+		}
+		todos = append(todos, todo)
+		list := make([]map[string]any, len(todos))
+		copy(list, todos)
+		todoMu.Unlock()
+		return c.Status(201).JSON(list)
 	})
 
 	log.Println("SPL Fiber demo listening on http://localhost:3000")

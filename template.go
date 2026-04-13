@@ -68,15 +68,17 @@ const (
 	exprIntLit                    // integer literal: ${42}
 	exprBoolTrue                  // true
 	exprBoolFalse                 // false
+	exprConstHash                 // constant hash literal: {"key": "val", ...}
 )
 
 // exprFastPath holds pre-analyzed metadata for fast expression evaluation.
 type exprFastPath struct {
-	kind   exprKind
-	ident  string // for exprIdent: the variable name; for exprDot: the left identifier
-	field  string // for exprDot: the field name
-	strVal string // for exprStringLit
-	intVal int64  // for exprIntLit
+	kind        exprKind
+	ident       string              // for exprIdent: the variable name; for exprDot: the left identifier
+	field       string              // for exprDot: the field name
+	strVal      string              // for exprStringLit
+	intVal      int64               // for exprIntLit
+	constResult interpreter.Object  // for exprConstHash: cached evaluation result (cloned on use)
 }
 
 // componentDef holds a registered component's body and declared props.
@@ -89,13 +91,6 @@ type compiledTemplate struct {
 	Nodes      []Node
 	Components map[string]componentDef
 	Imports    []string
-}
-
-type renderSession struct {
-	baseEnv    *interpreter.Environment
-	watchState map[string]string
-	hydration  *hydrationState
-	components map[string]componentDef
 }
 
 // Engine is the main entry point for rendering SPL templates.
@@ -217,7 +212,7 @@ func (e *Engine) RenderSSRFile(path string, data map[string]any) (string, error)
 	if err != nil {
 		return "", err
 	}
-	return out + renderer.renderHydrationScript(), nil
+	return out + renderer.renderHydrationScript(out), nil
 }
 
 // RenderStreamFile streams a parsed template file to a writer.
@@ -264,29 +259,12 @@ func (e *Engine) loadFile(resolved string) ([]Node, error) {
 	return nodes, nil
 }
 
-func (e *Engine) newRenderSession(state *hydrationState) *renderSession {
-	components := make(map[string]componentDef)
-	e.mu.RLock()
-	for k, v := range e.Components {
-		components[k] = v
-	}
-	e.mu.RUnlock()
-	return &renderSession{
-		baseEnv:    interpreter.NewEnclosedEnvironment(e.newGlobalEnv()),
-		watchState: make(map[string]string),
-		hydration:  state,
-		components: components,
-	}
-}
-
 func (e *Engine) cloneForRender(state *hydrationState, components map[string]componentDef) *Engine {
-	// Ensure globalEnv is initialized before copying the struct,
-	// so the clone gets the populated field value.
 	globalEnv := e.newGlobalEnv()
 	cloned := *e
 	cloned.Components = components
 	cloned.slotStack = nil
-	cloned.watchState = make(map[string]string)
+	cloned.watchState = nil // lazy-init in renderWatch
 	cloned.baseEnv = interpreter.NewEnclosedEnvironment(globalEnv)
 	cloned.hydration = state
 	return &cloned
@@ -364,15 +342,42 @@ func (e *Engine) buildCompiledTemplate(nodes []Node) *compiledTemplate {
 }
 
 func (e *Engine) renderCompiled(ct *compiledTemplate, data map[string]any, state *hydrationState) (string, error) {
-	session := e.newRenderSession(state)
-	if err := e.registerImportedComponents(ct.Imports, session.components, make(map[string]struct{})); err != nil {
-		return "", err
+	// Build components: start from engine's registered components, merge template's
+	e.mu.RLock()
+	engineCompCount := len(e.Components)
+	e.mu.RUnlock()
+
+	var components map[string]componentDef
+	if engineCompCount == 0 && len(ct.Components) == 0 && len(ct.Imports) == 0 {
+		// Fast path: no components anywhere — avoid map allocation entirely
+		components = nil
+	} else {
+		components = make(map[string]componentDef, engineCompCount+len(ct.Components))
+		e.mu.RLock()
+		for k, v := range e.Components {
+			components[k] = v
+		}
+		e.mu.RUnlock()
+
+		if err := e.registerImportedComponents(ct.Imports, components, make(map[string]struct{})); err != nil {
+			return "", err
+		}
+		for k, v := range ct.Components {
+			components[k] = v
+		}
 	}
-	for k, v := range ct.Components {
-		session.components[k] = v
+
+	// Create renderer directly — single environment creation, single clone
+	globalEnv := e.newGlobalEnv()
+	cloned := *e
+	if components != nil {
+		cloned.Components = components
 	}
-	renderer := e.cloneForRender(session.hydration, session.components)
-	return renderer.renderNodes(ct.Nodes, data, 0)
+	cloned.slotStack = nil
+	cloned.watchState = nil // lazy-init on first use
+	cloned.baseEnv = interpreter.NewEnclosedEnvironment(globalEnv)
+	cloned.hydration = state
+	return (&cloned).renderNodes(ct.Nodes, data, 0)
 }
 
 func (e *Engine) registerImportedComponents(imports []string, components map[string]componentDef, seen map[string]struct{}) error {
@@ -444,8 +449,46 @@ func classifyExpr(expr interpreter.Expression) exprFastPath {
 			return exprFastPath{kind: exprBoolTrue}
 		}
 		return exprFastPath{kind: exprBoolFalse}
+	case *interpreter.HashLiteral:
+		if isConstHashLiteral(v) {
+			return exprFastPath{kind: exprConstHash}
+		}
 	}
 	return exprFastPath{kind: exprGeneric}
+}
+
+// isConstExpr returns true if the expression contains only literal values (no variable references).
+func isConstExpr(expr interpreter.Expression) bool {
+	switch v := expr.(type) {
+	case *interpreter.StringLiteral, *interpreter.IntegerLiteral,
+		*interpreter.FloatLiteral, *interpreter.BooleanLiteral,
+		*interpreter.NullLiteral:
+		return true
+	case *interpreter.HashLiteral:
+		return isConstHashLiteral(v)
+	case *interpreter.ArrayLiteral:
+		for _, el := range v.Elements {
+			if !isConstExpr(el) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+// isConstHashLiteral returns true if a hash literal contains only literal keys and values.
+func isConstHashLiteral(h *interpreter.HashLiteral) bool {
+	for _, entry := range h.Entries {
+		if entry.IsSpread {
+			return false
+		}
+		if !isConstExpr(entry.Key) || !isConstExpr(entry.Value) {
+			return false
+		}
+	}
+	return true
 }
 
 // evalExpr evaluates an SPL expression string against the given environment.
@@ -454,11 +497,17 @@ func (e *Engine) evalExpr(expr string, env *interpreter.Environment) (interprete
 	if expr == "" {
 		return nil, fmt.Errorf("empty expression")
 	}
+	return e.evalExprTrimmed(expr, env)
+}
 
-	// Check fast-path metadata cache
+// evalExprTrimmed evaluates a pre-trimmed expression. Used internally to avoid redundant TrimSpace.
+func (e *Engine) evalExprTrimmed(expr string, env *interpreter.Environment) (interpreter.Object, error) {
+	// Combined cache lookup — single lock acquisition for both caches
 	e.mu.RLock()
 	meta, metaOK := e.exprMeta[expr]
+	program, progOK := e.exprCache[expr]
 	e.mu.RUnlock()
+
 	if metaOK {
 		switch meta.kind {
 		case exprIdent:
@@ -480,15 +529,18 @@ func (e *Engine) evalExpr(expr string, env *interpreter.Environment) (interprete
 			return interpreter.TRUE, nil
 		case exprBoolFalse:
 			return interpreter.FALSE, nil
+		case exprConstHash:
+			if meta.constResult != nil {
+				if h, ok := meta.constResult.(*interpreter.Hash); ok {
+					return cloneHash(h), nil
+				}
+				return meta.constResult, nil
+			}
 		}
 		// exprGeneric: fall through to full eval
 	}
 
-	// Check AST cache
-	e.mu.RLock()
-	program, ok := e.exprCache[expr]
-	e.mu.RUnlock()
-	if !ok {
+	if !progOK {
 		l := interpreter.NewLexer(expr)
 		p := interpreter.NewParser(l)
 		program = p.ParseProgram()
@@ -526,9 +578,27 @@ func (e *Engine) evalExpr(expr string, env *interpreter.Environment) (interprete
 			return interpreter.TRUE, nil
 		case exprBoolFalse:
 			return interpreter.FALSE, nil
+		case exprConstHash:
+			// Evaluate once and cache the result for future calls
+			result := interpreter.Eval(program, env)
+			if result != nil && result.Type() == interpreter.ERROR_OBJ {
+				return nil, fmt.Errorf("expression eval error: %s", result.Inspect())
+			}
+			meta.constResult = result
+			e.mu.Lock()
+			e.exprMeta[expr] = meta
+			e.mu.Unlock()
+			// Return a clone since the caller may mutate (e.g., adding default props)
+			if h, ok := result.(*interpreter.Hash); ok {
+				return cloneHash(h), nil
+			}
+			return result, nil
 		}
 	}
 
+	// Materialize any lazyHash values in the environment before passing to interpreter.Eval,
+	// which doesn't know about our lazy wrapper type.
+	materializeLazyHashes(env)
 	result := interpreter.Eval(program, env)
 	if result != nil && result.Type() == interpreter.ERROR_OBJ {
 		return nil, fmt.Errorf("expression eval error: %s", result.Inspect())
@@ -536,17 +606,45 @@ func (e *Engine) evalExpr(expr string, env *interpreter.Environment) (interprete
 	return result, nil
 }
 
+// materializeLazyHashes converts any lazyHash values in the environment's store
+// to real interpreter.Hash objects. Called before passing to interpreter.Eval which
+// doesn't know about the lazy wrapper type.
+func materializeLazyHashes(env *interpreter.Environment) {
+	for k, v := range env.Store {
+		if lh, ok := v.(*lazyHash); ok {
+			env.Store[k] = lh.materialize()
+		}
+	}
+}
+
+// hashKeyCache caches computed HashKey values for field names to avoid repeated allocations.
+var hashKeyCache sync.Map // string → interpreter.HashKey
+
+func cachedHashKey(field string) interpreter.HashKey {
+	if v, ok := hashKeyCache.Load(field); ok {
+		return v.(interpreter.HashKey)
+	}
+	key := &interpreter.String{Value: field}
+	hk := key.HashKey()
+	hashKeyCache.Store(field, hk)
+	return hk
+}
+
 // fastDotAccess performs a direct field lookup on an object without going through interpreter.Eval.
 func fastDotAccess(obj interpreter.Object, field string) (interpreter.Object, error) {
-	if hash, ok := obj.(*interpreter.Hash); ok {
-		key := &interpreter.String{Value: field}
-		hk := key.HashKey()
-		if pair, exists := hash.Pairs[hk]; exists {
+	switch v := obj.(type) {
+	case *interpreter.Hash:
+		hk := cachedHashKey(field)
+		if pair, exists := v.Pairs[hk]; exists {
 			return pair.Value, nil
 		}
 		return interpreter.NULL, nil
+	case *lazyHash:
+		if val, exists := v.data[field]; exists {
+			return toLazyObject(val), nil
+		}
+		return interpreter.NULL, nil
 	}
-	// For non-hash types, fall back would be needed but in template context
-	// data is always injected as Hash objects
+	// For non-hash types, data in template context is always Hash or lazyHash
 	return interpreter.NULL, nil
 }

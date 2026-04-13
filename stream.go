@@ -1,6 +1,7 @@
 package template
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -173,10 +174,18 @@ func (sr *StreamRenderer) RenderStreamToString(tmpl string) (string, error) {
 	return buf.String(), err
 }
 
+// jsonEscapeStr safely escapes a string for use inside a JavaScript string literal
+// within an HTML <script> tag. Uses json.Marshal for correctness.
 func jsonEscapeStr(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "'", "\\'")
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	s = strings.ReplaceAll(s, "\r", "\\r")
-	return "'" + s + "'"
+	b, err := json.Marshal(s)
+	if err != nil {
+		// Fallback: double-quote with basic escaping
+		s = strings.ReplaceAll(s, "\\", "\\\\")
+		s = strings.ReplaceAll(s, "\"", "\\\"")
+		s = strings.ReplaceAll(s, "\n", "\\n")
+		s = strings.ReplaceAll(s, "\r", "\\r")
+		return "\"" + s + "\""
+	}
+	// json.Marshal produces a valid JS string literal with proper escaping
+	return string(b)
 }

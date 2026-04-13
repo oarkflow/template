@@ -96,10 +96,10 @@ func (e *Engine) RenderSSR(tmpl string, data map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return out + renderer.renderHydrationScript(), nil
+	return out + renderer.renderHydrationScript(out), nil
 }
 
-func (e *Engine) renderHydrationScript() string {
+func (e *Engine) renderHydrationScript(renderedHTML string) string {
 	if e.hydration == nil || !e.hydration.NeedsBoot {
 		return ""
 	}
@@ -121,7 +121,7 @@ func (e *Engine) renderHydrationScript() string {
 		sb.WriteString(`"></script>`)
 	} else {
 		// Inline mode: detect features per-page for tree-shaking.
-		features := detectFeatures("", e.hydration.Effects, e.hydration.Views)
+		features := detectFeatures(renderedHTML, e.hydration.Effects, e.hydration.Views)
 		// Apply global flags.
 		if e.DisableAPI {
 			features &^= featAPI
@@ -267,11 +267,15 @@ func isSimpleSignalExpr(expr string) (string, bool) {
 	if expr == "" {
 		return "", false
 	}
-	for i, ch := range expr {
-		if !(ch == '_' || ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z') {
-			if i == 0 || ch != '_' {
-				return "", false
-			}
+	// First char must be a letter or underscore (not digit)
+	ch := expr[0]
+	if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+		return "", false
+	}
+	for i := 1; i < len(expr); i++ {
+		ch = expr[i]
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
+			return "", false
 		}
 	}
 	return expr, true
