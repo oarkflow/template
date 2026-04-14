@@ -30,7 +30,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/oarkflow/date v0.0.4 // indirect
 	github.com/oarkflow/expr v0.0.11 // indirect
-	github.com/oarkflow/interpreter v0.0.3 // indirect
+	github.com/oarkflow/interpreter v0.0.4 // indirect
 	github.com/oarkflow/jet v0.0.4 // indirect
 	github.com/oarkflow/json v0.0.28 // indirect
 	github.com/oarkflow/squealx v0.0.70 // indirect

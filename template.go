@@ -69,6 +69,10 @@ const (
 	exprBoolTrue                  // true
 	exprBoolFalse                 // false
 	exprConstHash                 // constant hash literal: {"key": "val", ...}
+	exprCmpEqStr                  // identifier == "literal" or "literal" == identifier
+	exprCmpNeqStr                 // identifier != "literal" or "literal" != identifier
+	exprCmpEqIdent                // identifier == identifier
+	exprCmpNeqIdent               // identifier != identifier
 )
 
 // exprFastPath holds pre-analyzed metadata for fast expression evaluation.
@@ -453,7 +457,49 @@ func classifyExpr(expr interpreter.Expression) exprFastPath {
 		if isConstHashLiteral(v) {
 			return exprFastPath{kind: exprConstHash}
 		}
+	case *interpreter.InfixExpression:
+		if v.Operator == "==" || v.Operator == "!=" {
+			return classifyInfixCmp(v)
+		}
 	}
+	return exprFastPath{kind: exprGeneric}
+}
+
+// classifyInfixCmp classifies == and != expressions for fast-path evaluation.
+// Handles: ident == "str", "str" == ident, ident == ident (and != variants).
+func classifyInfixCmp(v *interpreter.InfixExpression) exprFastPath {
+	isEq := v.Operator == "=="
+
+	// ident == "literal" or ident != "literal"
+	if left, ok := v.Left.(*interpreter.Identifier); ok {
+		if right, ok := v.Right.(*interpreter.StringLiteral); ok {
+			kind := exprCmpEqStr
+			if !isEq {
+				kind = exprCmpNeqStr
+			}
+			return exprFastPath{kind: kind, ident: left.Name, strVal: right.Value}
+		}
+		// ident == ident
+		if right, ok := v.Right.(*interpreter.Identifier); ok {
+			kind := exprCmpEqIdent
+			if !isEq {
+				kind = exprCmpNeqIdent
+			}
+			return exprFastPath{kind: kind, ident: left.Name, field: right.Name}
+		}
+	}
+
+	// "literal" == ident (reversed)
+	if left, ok := v.Left.(*interpreter.StringLiteral); ok {
+		if right, ok := v.Right.(*interpreter.Identifier); ok {
+			kind := exprCmpEqStr
+			if !isEq {
+				kind = exprCmpNeqStr
+			}
+			return exprFastPath{kind: kind, ident: right.Name, strVal: left.Value}
+		}
+	}
+
 	return exprFastPath{kind: exprGeneric}
 }
 
@@ -536,6 +582,10 @@ func (e *Engine) evalExprTrimmed(expr string, env *interpreter.Environment) (int
 				}
 				return meta.constResult, nil
 			}
+		case exprCmpEqStr, exprCmpNeqStr:
+			return evalCmpStr(env, meta)
+		case exprCmpEqIdent, exprCmpNeqIdent:
+			return evalCmpIdent(env, meta)
 		}
 		// exprGeneric: fall through to full eval
 	}
@@ -593,6 +643,10 @@ func (e *Engine) evalExprTrimmed(expr string, env *interpreter.Environment) (int
 				return cloneHash(h), nil
 			}
 			return result, nil
+		case exprCmpEqStr, exprCmpNeqStr:
+			return evalCmpStr(env, meta)
+		case exprCmpEqIdent, exprCmpNeqIdent:
+			return evalCmpIdent(env, meta)
 		}
 	}
 
@@ -615,6 +669,68 @@ func materializeLazyHashes(env *interpreter.Environment) {
 			env.Store[k] = lh.materialize()
 		}
 	}
+}
+
+// evalCmpStr evaluates identifier == "literal" or identifier != "literal" fast-path.
+func evalCmpStr(env *interpreter.Environment, meta exprFastPath) (interpreter.Object, error) {
+	obj, ok := env.Get(meta.ident)
+	if !ok {
+		return nil, fmt.Errorf("expression eval error: identifier not found: %s", meta.ident)
+	}
+	var match bool
+	switch v := obj.(type) {
+	case *interpreter.String:
+		match = v.Value == meta.strVal
+	default:
+		match = obj.Inspect() == meta.strVal
+	}
+	if meta.kind == exprCmpNeqStr {
+		match = !match
+	}
+	if match {
+		return interpreter.TRUE, nil
+	}
+	return interpreter.FALSE, nil
+}
+
+// evalCmpIdent evaluates identifier == identifier or identifier != identifier fast-path.
+func evalCmpIdent(env *interpreter.Environment, meta exprFastPath) (interpreter.Object, error) {
+	leftObj, ok := env.Get(meta.ident)
+	if !ok {
+		return nil, fmt.Errorf("expression eval error: identifier not found: %s", meta.ident)
+	}
+	rightObj, ok := env.Get(meta.field)
+	if !ok {
+		return nil, fmt.Errorf("expression eval error: identifier not found: %s", meta.field)
+	}
+	var match bool
+	switch l := leftObj.(type) {
+	case *interpreter.String:
+		if r, ok := rightObj.(*interpreter.String); ok {
+			match = l.Value == r.Value
+		}
+	case *interpreter.Integer:
+		if r, ok := rightObj.(*interpreter.Integer); ok {
+			match = l.Value == r.Value
+		}
+	case *interpreter.Float:
+		if r, ok := rightObj.(*interpreter.Float); ok {
+			match = l.Value == r.Value
+		}
+	case *interpreter.Boolean:
+		if r, ok := rightObj.(*interpreter.Boolean); ok {
+			match = l.Value == r.Value
+		}
+	default:
+		match = leftObj.Inspect() == rightObj.Inspect()
+	}
+	if meta.kind == exprCmpNeqIdent {
+		match = !match
+	}
+	if match {
+		return interpreter.TRUE, nil
+	}
+	return interpreter.FALSE, nil
 }
 
 // hashKeyCache caches computed HashKey values for field names to avoid repeated allocations.

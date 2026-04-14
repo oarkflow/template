@@ -438,10 +438,17 @@ func (e *Engine) renderFor(n *ForNode, env *interpreter.Environment, data map[st
 	switch v := iterObj.(type) {
 	case *interpreter.Array:
 		items = make([]iterItem, len(v.Elements))
-		for i, elem := range v.Elements {
-			items[i] = iterItem{
-				key:   &interpreter.Integer{Value: int64(i)},
-				value: elem,
+		if n.KeyVar != "" {
+			// Only allocate key objects when the template uses them
+			for i, elem := range v.Elements {
+				items[i] = iterItem{
+					key:   &interpreter.Integer{Value: int64(i)},
+					value: elem,
+				}
+			}
+		} else {
+			for i, elem := range v.Elements {
+				items[i] = iterItem{value: elem}
 			}
 		}
 	case *interpreter.Hash:

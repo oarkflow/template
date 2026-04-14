@@ -236,3 +236,28 @@ func BenchmarkGoHTML_ComplexPage(b *testing.B) {
 		}
 	}
 }
+
+// Component-equivalent for html/template using {{template}} (closest equivalent to @render)
+var goComponentTmpl = func() *htmltemplate.Template {
+	t := htmltemplate.Must(htmltemplate.New("main").Parse(`{{template "Card" .Card1}}{{template "Card" .Card2}}`))
+	htmltemplate.Must(t.New("Card").Parse(`<div class="card"><h3>{{.Title}}</h3><p>{{.Body}}</p></div>`))
+	return t
+}()
+
+func BenchmarkGoHTML_Component(b *testing.B) {
+	type card struct{ Title, Body string }
+	data := struct{ Card1, Card2 card }{
+		Card1: card{Title: "Hello", Body: "World"},
+		Card2: card{Title: "Foo", Body: "Bar"},
+	}
+	var buf strings.Builder
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		err := goComponentTmpl.Execute(&buf, data)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
