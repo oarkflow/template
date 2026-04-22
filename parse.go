@@ -278,6 +278,9 @@ func (p *parser) parseNodes(inBlock bool) ([]Node, error) {
 	var textBuf strings.Builder
 	var textQuote rune
 	var prevTextRune rune
+	// textBraceDepth tracks non-directive '{' encountered in plain text (e.g. CSS rules).
+	// A closing '}' only terminates the directive block when this depth is zero.
+	textBraceDepth := 0
 
 	flushText := func() {
 		if textBuf.Len() > 0 {
@@ -309,6 +312,14 @@ func (p *parser) parseNodes(inBlock bool) ([]Node, error) {
 
 		// Check for closing brace when inside a block
 		if inBlock && p.peek() == '}' {
+			if textBraceDepth > 0 {
+				// This '}' closes a non-directive brace (e.g. CSS rule) — treat as text
+				textBraceDepth--
+				ch := p.advance()
+				textBuf.WriteRune(ch)
+				prevTextRune = ch
+				continue
+			}
 			p.advance() // consume '}'
 			flushText()
 			return nodes, nil
@@ -561,6 +572,11 @@ func (p *parser) parseNodes(inBlock bool) ([]Node, error) {
 
 		// Regular text
 		ch := p.advance()
+		// Track non-directive opening braces (e.g. CSS rules) so their matching '}'
+		// is not mistaken for the directive block terminator.
+		if inBlock && ch == '{' {
+			textBraceDepth++
+		}
 		textBuf.WriteRune(ch)
 		prevTextRune = ch
 	}
