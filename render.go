@@ -796,7 +796,16 @@ func (e *Engine) renderHandler(n *HandlerNode, env *interpreter.Environment, dat
 		if e.browser.Handlers == nil {
 			e.browser.Handlers = make(map[string]string)
 		}
-		e.browser.Handlers[n.Name] = strings.TrimSpace(body)
+		if e.browser.CompiledHandlers == nil {
+			e.browser.CompiledHandlers = make(map[string][]clientAction)
+		}
+		trimmed := strings.TrimSpace(body)
+		actions, err := compileClientActions(trimmed)
+		if err != nil {
+			return "", fmt.Errorf("@handler(%s): %w", n.Name, err)
+		}
+		e.browser.Handlers[n.Name] = trimmed
+		e.browser.CompiledHandlers[n.Name] = actions
 		return "", nil
 	}
 	e.registerHandler(n.Name, body)

@@ -381,7 +381,8 @@ func main() {
 		return c.Status(201).JSON(list)
 	})
 
-	log.Println("SPL Fiber demo listening on http://localhost:3000")
+	log.Println("SPL Fiber SSR demo listening on http://localhost:3000/")
+	log.Println("SPL Fiber browser/WASM demo listening on http://localhost:3000/browser")
 	log.Fatal(app.Listen(":3000"))
 }
 

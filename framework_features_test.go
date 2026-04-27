@@ -181,6 +181,30 @@ func TestDebounceNamedHandlerRewrite(t *testing.T) {
 	}
 }
 
+func TestBrowserRenderCompilesEventSpecsForCSP(t *testing.T) {
+	e := New()
+	e.SecureMode = true
+	if err := e.LoadBundle(Bundle{
+		Entry: "index.html",
+		Templates: map[string]string{
+			"index.html": `@signal(counter = 0)@handler(increment) { counter += 2; }<button on:click="counter += 1">Inline</button><button on:click="increment">Named</button>`,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.RenderBrowserFile("index.html", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `data-spl-on-click="[{&#34;kind&#34;:&#34;add&#34;,&#34;target&#34;:&#34;counter&#34;,&#34;value&#34;:1}]"`) {
+		t.Fatalf("expected inline browser event to compile to structured actions, got %q", out)
+	}
+	handlers := e.BrowserHandlers()
+	if actions, ok := handlers["increment"]; !ok || len(actions) != 1 || actions[0].Kind != "add" || actions[0].Target != "counter" {
+		t.Fatalf("expected named browser handler to compile to structured actions, got %#v", handlers)
+	}
+}
+
 func TestTemplateStreamingDirectives(t *testing.T) {
 	e := New()
 	e.AutoEscape = false

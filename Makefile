@@ -17,7 +17,7 @@ ifeq ($(VERBOSE),1)
 TINYGO_VERBOSE_FLAGS += -x -work
 endif
 
-.PHONY: help fmt test build build-fiber run-fiber wasm wasm-go wasm-tinygo wasm-clean clean
+.PHONY: help fmt test build build-fiber fiber-wasm-assets run-fiber wasm wasm-go wasm-tinygo wasm-clean clean
 
 help:
 	@echo "Available targets:"
@@ -25,7 +25,7 @@ help:
 	@echo "  make test         - run go test ./..."
 	@echo "  make build        - build the template module"
 	@echo "  make build-fiber  - build the Fiber showcase"
-	@echo "  make run-fiber    - run the Fiber showcase"
+	@echo "  make run-fiber    - run the Fiber showcase with browser wasm assets ready"
 	@echo "  make wasm         - build a KB-class wasm asset with TinyGo"
 	@echo "                    - use VERBOSE=1 for TinyGo command details"
 	@echo "  make wasm-go      - build a standard Go wasm asset (MB-class fallback)"
@@ -44,7 +44,17 @@ build:
 build-fiber:
 	cd $(FIBER_DIR) && go build ./...
 
-run-fiber:
+fiber-wasm-assets:
+	@if [ -f "$(WASM_FILE)" ] && [ -f "$(WASM_EXEC)" ]; then \
+		echo "Using existing browser wasm assets."; \
+	else \
+		echo "Preparing browser wasm assets with standard Go..."; \
+		$(MAKE) wasm-go; \
+	fi
+
+run-fiber: fiber-wasm-assets
+	@echo "SSR demo:     http://localhost:3000/"
+	@echo "Browser/WASM: http://localhost:3000/browser"
 	cd $(FIBER_DIR) && go run .
 
 wasm: wasm-tinygo

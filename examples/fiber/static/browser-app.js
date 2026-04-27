@@ -7,6 +7,7 @@
   let bootOptions = null;
   let listenersAttached = false;
   let wasmReady = null;
+  let debounceTimers = new WeakMap();
 
   function getCore() {
     if (!window.SPLWASMCore) {
@@ -181,41 +182,111 @@
     return root ? Array.from(root.querySelectorAll(selector)) : [];
   }
 
-  function createScope(event, element) {
-    return new Proxy({}, {
-      has() {
-        return true;
-      },
-      get(_, prop) {
-        if (prop === Symbol.unscopables) return undefined;
-        if (prop === 'signal') return signal;
-        if (prop === 'setSignal') return setSignal;
-        if (prop === 'toggle') return toggle;
-        if (prop === 'ref') return ref;
-        if (prop === 'select') return select;
-        if (prop === 'selectAll') return selectAll;
-        if (prop === 'event') return event;
-        if (prop === 'element') return element;
-        if (typeof prop === 'string' && Object.prototype.hasOwnProperty.call(signalCache, prop)) {
-          return signal(prop);
-        }
-        return globalThis[prop];
-      },
-      set(_, prop, value) {
-        if (typeof prop === 'string') {
-          writeSignal(prop, unwrapSignalValue(value));
-          return true;
-        }
-        return false;
-      },
-    });
+  function normalizeNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
   }
 
-  function executeJS(spec, event, element) {
-    const body = handlers[spec] || spec;
-    const scope = createScope(event, element);
-    const fn = new Function('scope', 'event', 'element', `with (scope) { ${body} }`);
-    return fn.call(element, scope, event, element);
+  function cloneActionValue(value) {
+    return clone(value);
+  }
+
+  function applyAction(action) {
+    if (!action || typeof action !== 'object' || !action.kind || !action.target) {
+      throw new Error('Invalid browser action payload');
+    }
+    if (action.kind === 'toggle') {
+      toggle(action.target);
+      return;
+    }
+    if (action.kind === 'set') {
+      writeSignal(action.target, cloneActionValue(action.value));
+      return;
+    }
+    if (action.kind === 'add') {
+      writeSignal(action.target, normalizeNumber(readSignal(action.target)) + normalizeNumber(action.value));
+      return;
+    }
+    if (action.kind === 'sub') {
+      writeSignal(action.target, normalizeNumber(readSignal(action.target)) - normalizeNumber(action.value));
+      return;
+    }
+    throw new Error(`Unsupported browser action kind: ${action.kind}`);
+  }
+
+  function runActions(actions) {
+    if (!Array.isArray(actions)) {
+      throw new Error('Invalid browser action list');
+    }
+    actions.forEach(applyAction);
+  }
+
+  function parseEventSpec(spec) {
+    if (!spec) return null;
+    const trimmed = String(spec).trim();
+    if (!trimmed) return null;
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      return parseJSON(trimmed, null);
+    }
+    return trimmed;
+  }
+
+  function resolveEventActions(spec) {
+    if (typeof spec === 'string') {
+      const actions = handlers[spec];
+      if (!Array.isArray(actions)) {
+        throw new Error(`Unknown browser handler: ${spec}`);
+      }
+      return actions;
+    }
+    if (Array.isArray(spec)) {
+      return spec;
+    }
+    if (spec && typeof spec === 'object') {
+      if (spec.handler) {
+        const actions = handlers[spec.handler];
+        if (!Array.isArray(actions)) {
+          throw new Error(`Unknown browser handler: ${spec.handler}`);
+        }
+        return actions;
+      }
+      if (Array.isArray(spec.actions)) {
+        return spec.actions;
+      }
+    }
+    throw new Error('Unsupported browser event spec');
+  }
+
+  function scheduleDebouncedEvent(element, key, delay, runner) {
+    let timers = debounceTimers.get(element);
+    if (!timers) {
+      timers = new Map();
+      debounceTimers.set(element, timers);
+    }
+    if (timers.has(key)) {
+      clearTimeout(timers.get(key));
+    }
+    timers.set(key, setTimeout(() => {
+      timers.delete(key);
+      runner();
+    }, delay));
+  }
+
+  function executeEventSpec(rawSpec, event, element) {
+    const parsed = parseEventSpec(rawSpec);
+    if (!parsed) return true;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.delay > 0) {
+      const debounceKey = `${event.type}:${rawSpec}`;
+      scheduleDebouncedEvent(element, debounceKey, parsed.delay, () => {
+        runActions(resolveEventActions(parsed));
+        rerender().catch((err) => {
+          console.error('[spl:browser]', err);
+        });
+      });
+      return false;
+    }
+    runActions(resolveEventActions(parsed));
+    return true;
   }
 
   function updateModels() {
@@ -432,8 +503,20 @@
 
     const spec = el.getAttribute(`data-spl-on-${event.type}`);
     if (!spec) return;
-    event.preventDefault();
-    executeJS(spec, event, el);
+    const mods = (el.getAttribute(`data-spl-on-${event.type}-mods`) || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (mods.includes('prevent') && typeof event.preventDefault === 'function') {
+      event.preventDefault();
+    }
+    if (mods.includes('stop') && typeof event.stopPropagation === 'function') {
+      event.stopPropagation();
+    }
+    const shouldRerender = executeEventSpec(spec, event, el);
+    if (!shouldRerender) {
+      return;
+    }
     syncSignals();
     await rerender();
   }

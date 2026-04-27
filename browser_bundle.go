@@ -15,10 +15,11 @@ type Bundle struct {
 }
 
 type browserState struct {
-	Entry    string
-	Data     map[string]any
-	Signals  map[string]any
-	Handlers map[string]string
+	Entry            string
+	Data             map[string]any
+	Signals          map[string]any
+	Handlers         map[string]string
+	CompiledHandlers map[string][]clientAction
 }
 
 func cloneAnyMap(src map[string]any) map[string]any {
@@ -147,9 +148,10 @@ func (e *Engine) SetSignal(path string, value any) error {
 	defer e.mu.Unlock()
 	if e.browser == nil {
 		e.browser = &browserState{
-			Data:     map[string]any{},
-			Signals:  map[string]any{},
-			Handlers: map[string]string{},
+			Data:             map[string]any{},
+			Signals:          map[string]any{},
+			Handlers:         map[string]string{},
+			CompiledHandlers: map[string][]clientAction{},
 		}
 	}
 	if e.browser.Signals == nil {
@@ -167,13 +169,13 @@ func (e *Engine) GetSignal(path string) (any, bool) {
 	return getSignalPathValue(e.browser.Signals, path)
 }
 
-func (e *Engine) BrowserHandlers() map[string]string {
+func (e *Engine) BrowserHandlers() map[string][]clientAction {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	if e.browser == nil {
-		return map[string]string{}
+		return map[string][]clientAction{}
 	}
-	return cloneAnyStringMap(e.browser.Handlers)
+	return cloneCompiledHandlers(e.browser.CompiledHandlers)
 }
 
 func (e *Engine) BrowserSignals() map[string]any {
@@ -196,6 +198,23 @@ func cloneAnyStringMap(src map[string]string) map[string]string {
 	return cloned
 }
 
+func cloneCompiledHandlers(src map[string][]clientAction) map[string][]clientAction {
+	if src == nil {
+		return map[string][]clientAction{}
+	}
+	cloned := make(map[string][]clientAction, len(src))
+	for k, v := range src {
+		if v == nil {
+			cloned[k] = nil
+			continue
+		}
+		next := make([]clientAction, len(v))
+		copy(next, v)
+		cloned[k] = next
+	}
+	return cloned
+}
+
 func (e *Engine) RenderBrowserFile(path string, data map[string]any) (string, error) {
 	resolved, err := e.resolvePath(path)
 	if err != nil {
@@ -213,6 +232,7 @@ func (e *Engine) RenderBrowserFile(path string, data map[string]any) (string, er
 		e.browser.Signals = make(map[string]any)
 	}
 	e.browser.Handlers = make(map[string]string)
+	e.browser.CompiledHandlers = make(map[string][]clientAction)
 	e.mu.Unlock()
 
 	compiled, err := e.compileFileTemplate(resolved)
@@ -222,6 +242,11 @@ func (e *Engine) RenderBrowserFile(path string, data map[string]any) (string, er
 	out, err := e.renderCompiled(compiled, e.currentBrowserState().Data, nil)
 	if err != nil {
 		return "", err
+	}
+	compiledHandlers := cloneCompiledHandlers(e.currentBrowserState().CompiledHandlers)
+	out, err = rewriteHydrationMarkup(out, compiledHandlers)
+	if err != nil {
+		return "", fmt.Errorf("browser event compilation: %w", err)
 	}
 	if err := e.ensureSecureRenderedHTML(out); err != nil {
 		return "", err
