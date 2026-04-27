@@ -1,3 +1,8 @@
 .claude
 .idea
 .codex
+.cache
+.gocache
+.gomodcache
+*.wasm
+*.wasm.gz
