@@ -243,7 +243,7 @@ func (e *Engine) renderLayout(layoutPath string, defines map[string][]Node, data
 func (e *Engine) renderNode(n Node, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
 	switch v := n.(type) {
 	case *TextNode:
-		if e.hydration != nil {
+		if e.hydration != nil || e.browser != nil {
 			return transformReactiveAttributes(v.Text), nil
 		}
 		return v.Text, nil
@@ -792,6 +792,13 @@ func (e *Engine) renderHandler(n *HandlerNode, env *interpreter.Environment, dat
 	if strings.TrimSpace(n.Body) != "" {
 		body = n.Body
 	}
+	if e.browser != nil {
+		if e.browser.Handlers == nil {
+			e.browser.Handlers = make(map[string]string)
+		}
+		e.browser.Handlers[n.Name] = strings.TrimSpace(body)
+		return "", nil
+	}
 	e.registerHandler(n.Name, body)
 	return "", nil
 }
@@ -1034,6 +1041,16 @@ func (e *Engine) renderWatch(n *WatchNode, env *interpreter.Environment, data ma
 }
 
 func (e *Engine) renderSignal(n *SignalNode, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
+	if e.browser != nil {
+		if current, ok := getSignalPathValue(e.browser.Signals, n.Name); ok {
+			obj := toLazyObject(current)
+			env.Set(n.Name, obj)
+			if data != nil {
+				data[n.Name] = current
+			}
+			return "", nil
+		}
+	}
 	obj, err := e.evalExpr(n.InitialExpr, env)
 	if err != nil {
 		return "", fmt.Errorf("@signal(%s): %w", n.Name, err)
@@ -1041,6 +1058,10 @@ func (e *Engine) renderSignal(n *SignalNode, env *interpreter.Environment, data 
 	env.Set(n.Name, obj)
 	if data != nil {
 		data[n.Name] = objectToNative(obj)
+	}
+	if e.browser != nil {
+		e.browser.Signals[n.Name] = objectToNative(obj)
+		return "", nil
 	}
 	e.registerSignal(n.Name, obj)
 	return "", nil
@@ -1059,6 +1080,9 @@ func (e *Engine) renderBind(n *BindNode, env *interpreter.Environment, data map[
 }
 
 func (e *Engine) renderEffect(n *EffectNode, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
+	if e.browser != nil {
+		return e.renderBody(n.Body, env, data, depth)
+	}
 	if e.hydration == nil {
 		return e.renderBody(n.Body, env, data, depth)
 	}
@@ -1089,6 +1113,9 @@ func (e *Engine) renderEffect(n *EffectNode, env *interpreter.Environment, data 
 }
 
 func (e *Engine) renderReactiveView(n *ReactiveViewNode, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
+	if e.browser != nil {
+		return e.renderBody(n.Body, env, data, depth)
+	}
 	initialBody, err := e.renderBody(n.Body, env, data, depth)
 	if err != nil {
 		return "", fmt.Errorf("@reactive: %w", err)
@@ -1118,7 +1145,7 @@ func (e *Engine) renderReactiveView(n *ReactiveViewNode, env *interpreter.Enviro
 }
 
 func (e *Engine) renderClick(n *ClickNode, env *interpreter.Environment, data map[string]any, depth int) (string, error) {
-	if e.hydration == nil {
+	if e.hydration == nil && e.browser == nil {
 		return fmt.Sprintf(`<button type="button">%s</button>`, html.EscapeString(n.Label)), nil
 	}
 	return WrapClickAction(html.EscapeString(n.Label), n.Signal, n.Action, n.Value), nil

@@ -54,3 +54,4 @@ require (
 )
 
 replace github.com/oarkflow/template => ../..
+replace github.com/oarkflow/interpreter => ../../../interpreter

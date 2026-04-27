@@ -15,7 +15,9 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -202,8 +204,12 @@ func (v *SPLViews) Render(w io.Writer, name string, binding any, layout ...strin
 }
 
 func main() {
+	exampleDir := currentExampleDir()
+	viewsDir := filepath.Join(exampleDir, "views")
+	staticDir := filepath.Join(exampleDir, "static")
+
 	// Create the SPL template engine pointing at the views directory.
-	engine := New("./views")
+	engine := New(viewsDir)
 	engine.Reload(true) // dev mode: re-read templates on each request
 	engine.SSR(true)    // enable reactive hydration (@signal, @reactive, etc.)
 	engine.engine.SecureMode = true
@@ -221,7 +227,7 @@ func main() {
 	})
 
 	app.Use(func(c fiber.Ctx) error {
-		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
 		c.Set("Referrer-Policy", "no-referrer")
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("X-Frame-Options", "DENY")
@@ -237,45 +243,54 @@ func main() {
 		return c.SendString(engine.engine.RuntimeJS())
 	})
 
+	app.Get("/assets/browser-app.js", func(c fiber.Ctx) error {
+		c.Set("Content-Type", "application/javascript")
+		return c.SendFile(filepath.Join(staticDir, "browser-app.js"))
+	})
+
+	app.Get("/assets/wasm_exec.js", func(c fiber.Ctx) error {
+		c.Set("Content-Type", "application/javascript")
+		path, err := wasmExecAssetPath(staticDir)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		return c.SendFile(path)
+	})
+
+	app.Get("/assets/spl.wasm", func(c fiber.Ctx) error {
+		wasmPath, compressed, err := wasmAssetPath(staticDir, templateRootDir())
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		c.Set("Content-Type", "application/wasm")
+		if compressed && strings.Contains(c.Get("Accept-Encoding"), "gzip") {
+			c.Set("Content-Encoding", "gzip")
+			c.Set("Vary", "Accept-Encoding")
+		}
+		return c.SendFile(wasmPath)
+	})
+
+	app.Get("/assets/spl-bundle.json", func(c fiber.Ctx) error {
+		bundle, err := engine.engine.ExportBundle("index.html")
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(bundle)
+	})
+
 	// --- Routes ---
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.Render("index", fiber.Map{
-			"title": "SPL Template Engine — Interactive Demo",
-			"countries": []Country{
-				{Code: "us", Name: "United States", Region: "Americas"},
-				{Code: "uk", Name: "United Kingdom", Region: "Europe"},
-				{Code: "ca", Name: "Canada", Region: "Americas"},
-				{Code: "au", Name: "Australia", Region: "Oceania"},
-				{Code: "de", Name: "Germany", Region: "Europe"},
-				{Code: "fr", Name: "France", Region: "Europe"},
-				{Code: "jp", Name: "Japan", Region: "Asia"},
-				{Code: "in", Name: "India", Region: "Asia"},
-				{Code: "br", Name: "Brazil", Region: "Americas"},
-				{Code: "np", Name: "Nepal", Region: "Asia"},
-			},
-			"roles": []Role{
-				{Value: "developer", Label: "Developer", Permissions: []string{"read", "write", "deploy"}},
-				{Value: "designer", Label: "Designer", Permissions: []string{"read", "write"}},
-				{Value: "manager", Label: "Project Manager", Permissions: []string{"read", "write", "admin"}},
-				{Value: "devops", Label: "DevOps Engineer", Permissions: []string{"read", "write", "deploy", "admin"}},
-				{Value: "qa", Label: "QA Engineer", Permissions: []string{"read", "write", "test"}},
-				{Value: "admin", Label: "Administrator", Permissions: []string{"read", "write", "deploy", "admin", "super"}},
-			},
-			"priorities": []Priority{PriorityLow, PriorityMedium, PriorityHigh, PriorityCritical},
-			"config": FormConfig{
-				MaxBioLength: 280,
-				MinAge:       0,
-				MaxAge:       150,
-				AllowSignup:  true,
-			},
-			"regionColors": map[string]string{
-				"Americas": "#3b82f6",
-				"Europe":   "#22c55e",
-				"Asia":     "#f59e0b",
-				"Oceania":  "#a855f7",
-			},
-		})
+		return c.Render("index", demoPageData())
+	})
+
+	app.Get("/browser", func(c fiber.Ctx) error {
+		c.Type("html")
+		return c.SendString(browserShellHTML())
+	})
+
+	app.Get("/api/browser/page-data", func(c fiber.Ctx) error {
+		return c.JSON(demoPageData())
 	})
 
 	// --- API Endpoints for Forms page ---
@@ -373,4 +388,124 @@ func main() {
 func runtimeAssetVersion(src string) string {
 	sum := sha256.Sum256([]byte(src))
 	return hex.EncodeToString(sum[:8])
+}
+
+func demoPageData() fiber.Map {
+	return fiber.Map{
+		"title": "SPL Template Engine — Interactive Demo",
+		"countries": []Country{
+			{Code: "us", Name: "United States", Region: "Americas"},
+			{Code: "uk", Name: "United Kingdom", Region: "Europe"},
+			{Code: "ca", Name: "Canada", Region: "Americas"},
+			{Code: "au", Name: "Australia", Region: "Oceania"},
+			{Code: "de", Name: "Germany", Region: "Europe"},
+			{Code: "fr", Name: "France", Region: "Europe"},
+			{Code: "jp", Name: "Japan", Region: "Asia"},
+			{Code: "in", Name: "India", Region: "Asia"},
+			{Code: "br", Name: "Brazil", Region: "Americas"},
+			{Code: "np", Name: "Nepal", Region: "Asia"},
+		},
+		"roles": []Role{
+			{Value: "developer", Label: "Developer", Permissions: []string{"read", "write", "deploy"}},
+			{Value: "designer", Label: "Designer", Permissions: []string{"read", "write"}},
+			{Value: "manager", Label: "Project Manager", Permissions: []string{"read", "write", "admin"}},
+			{Value: "devops", Label: "DevOps Engineer", Permissions: []string{"read", "write", "deploy", "admin"}},
+			{Value: "qa", Label: "QA Engineer", Permissions: []string{"read", "write", "test"}},
+			{Value: "admin", Label: "Administrator", Permissions: []string{"read", "write", "deploy", "admin", "super"}},
+		},
+		"priorities": []Priority{PriorityLow, PriorityMedium, PriorityHigh, PriorityCritical},
+		"config": FormConfig{
+			MaxBioLength: 280,
+			MinAge:       0,
+			MaxAge:       150,
+			AllowSignup:  true,
+		},
+		"regionColors": map[string]string{
+			"Americas": "#3b82f6",
+			"Europe":   "#22c55e",
+			"Asia":     "#f59e0b",
+			"Oceania":  "#a855f7",
+		},
+	}
+}
+
+func browserShellHTML() string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPL Browser Renderer</title>
+    <style>
+        html, body { margin: 0; padding: 0; background: #f8fafc; color: #1e293b; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="app" data-spl-entry="index.html" data-spl-bundle-url="/assets/spl-bundle.json" data-spl-data-url="/api/browser/page-data"></div>
+    <script src="/assets/wasm_exec.js"></script>
+    <script src="/assets/browser-app.js"></script>
+</body>
+</html>`
+}
+
+func currentExampleDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	return filepath.Dir(file)
+}
+
+func templateRootDir() string {
+	return filepath.Clean(filepath.Join(currentExampleDir(), "../.."))
+}
+
+var wasmBuild struct {
+	mu   sync.Mutex
+	path string
+}
+
+func generatedAssetDir(staticDir string) string {
+	return filepath.Join(staticDir, "generated")
+}
+
+func wasmExecAssetPath(staticDir string) (string, error) {
+	generated := filepath.Join(generatedAssetDir(staticDir), "wasm_exec.js")
+	if _, err := os.Stat(generated); err == nil {
+		return generated, nil
+	}
+	return filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js"), nil
+}
+
+func wasmAssetPath(staticDir, rootDir string) (string, bool, error) {
+	generatedDir := generatedAssetDir(staticDir)
+	compressed := filepath.Join(generatedDir, "spl.wasm.gz")
+	if _, err := os.Stat(compressed); err == nil {
+		return compressed, true, nil
+	}
+	generated := filepath.Join(generatedDir, "spl.wasm")
+	if _, err := os.Stat(generated); err == nil {
+		return generated, false, nil
+	}
+	path, err := ensureWASMAsset(rootDir)
+	return path, false, err
+}
+
+func ensureWASMAsset(rootDir string) (string, error) {
+	wasmBuild.mu.Lock()
+	defer wasmBuild.mu.Unlock()
+	if wasmBuild.path != "" {
+		if _, err := os.Stat(wasmBuild.path); err == nil {
+			return wasmBuild.path, nil
+		}
+	}
+	outPath := filepath.Join(os.TempDir(), "spl-browser-renderer.wasm")
+	cmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", outPath, "./cmd/splwasm")
+	cmd.Dir = rootDir
+	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("build spl.wasm: %w\n%s", err, strings.TrimSpace(string(output)))
+	}
+	wasmBuild.path = outPath
+	return outPath, nil
 }

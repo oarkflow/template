@@ -4,6 +4,8 @@ go 1.26.1
 
 require github.com/oarkflow/interpreter v0.0.5
 
+replace github.com/oarkflow/interpreter => ../interpreter
+
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

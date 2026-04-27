@@ -1,3 +1,7 @@
 .claude
 .idea
 .codex
+splwasm
+examples/fiber/fiber
+examples/fiber/static/generated/
+.cache

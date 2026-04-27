@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -127,6 +126,8 @@ type Engine struct {
 	baseEnv             *interpreter.Environment // base environment for the current render call
 	globalEnv           *interpreter.Environment // cached global environment (created once)
 	hydration           *hydrationState          // SSR hydration state for the current render call
+	browser             *browserState            // browser-side rendering state for the current render call
+	bundle              *Bundle                  // optional in-memory template registry
 	HydrationRuntimeURL string                   // if set, emit <script src="..."> instead of inlining runtime
 	CSPNonce            string                   // optional nonce applied to executable hydration script tags
 	SecureMode          bool                     // enforce CSP-safe, non-eval hydration output (default: false)
@@ -309,7 +310,7 @@ func (e *Engine) loadFile(resolved string) ([]Node, error) {
 		return nodes, nil
 	}
 	e.mu.RUnlock()
-	content, err := os.ReadFile(resolved)
+	content, err := e.readTemplateSource(resolved)
 	if err != nil {
 		return nil, err
 	}
@@ -479,6 +480,12 @@ func (e *Engine) resolvePath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("template path is required")
+	}
+	e.mu.RLock()
+	bundle := e.bundle
+	e.mu.RUnlock()
+	if bundle != nil {
+		return normalizeTemplatePath(path)
 	}
 	baseDir := e.BaseDir
 	if baseDir == "" {
