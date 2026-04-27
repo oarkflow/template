@@ -10,6 +10,7 @@ import (
 func TestTemplateSSRHydrationAndReactiveNodes(t *testing.T) {
 	e := New()
 	e.AutoEscape = false
+	e.SecureMode = true
 	out, err := e.RenderSSR(`@signal(count = 3)<div>@bind(count)</div>@click("Plus", count, "inc", "1")@effect(count) {<span>${count}</span>}@reactive(count) {@if(count) {<strong>${count}</strong>} @else {<em>zero</em>}}`, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -23,7 +24,7 @@ func TestTemplateSSRHydrationAndReactiveNodes(t *testing.T) {
 	if !strings.Contains(out, `__SPL_SIGNAL__count__`) {
 		t.Fatalf("expected effect body output, got %q", out)
 	}
-	if !strings.Contains(out, `data-spl-on-click="count += 1"`) {
+	if !strings.Contains(out, `data-spl-on-click="[{&#34;kind&#34;:&#34;add&#34;,&#34;target&#34;:&#34;count&#34;,&#34;value&#34;:1}]"`) {
 		t.Fatalf("expected click hydration action, got %q", out)
 	}
 	if !strings.Contains(out, `data-spl-view="1"`) {
@@ -34,9 +35,6 @@ func TestTemplateSSRHydrationAndReactiveNodes(t *testing.T) {
 	}
 	if !strings.Contains(out, `data-spl-else="count"`) {
 		t.Fatalf("expected signal-aware conditional markers, got %q", out)
-	}
-	if !strings.Contains(out, `data-spl-on-click="count += 1"`) {
-		t.Fatalf("expected click action, got %q", out)
 	}
 	if !strings.Contains(out, `data-spl-runtime`) {
 		t.Fatalf("expected runtime script tag, got %q", out)
@@ -56,6 +54,7 @@ func TestTemplateSSRHydrationAndReactiveNodes(t *testing.T) {
 func TestCompleteReactiveShowcaseTemplate(t *testing.T) {
 	e := New()
 	e.BaseDir = filepath.Join("testdata", "templates")
+	e.SecureMode = true
 	out, err := e.RenderSSRFile("complete_reactive_showcase.html", map[string]any{
 		"siteTitle":    "SPL UI",
 		"pageTitle":    "Complete Reactive Showcase",
@@ -74,7 +73,7 @@ func TestCompleteReactiveShowcaseTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, needle := range []string{"Complete Reactive Showcase", "Reactive Control Panel", `data-spl-on-click="toggle(panelOpen)"`, `data-spl-hydration`, `Hydrated with SSR`} {
+	for _, needle := range []string{"Complete Reactive Showcase", "Reactive Control Panel", `data-spl-on-click="[{&#34;kind&#34;:&#34;toggle&#34;,&#34;target&#34;:&#34;panelOpen&#34;}]"`, `data-spl-hydration`, `Hydrated with SSR`} {
 		if !strings.Contains(out, needle) {
 			t.Fatalf("expected %q in output, got %q", needle, out)
 		}
@@ -112,36 +111,37 @@ func TestImportDirectiveRegistersComponents(t *testing.T) {
 
 func TestAttributeEventRewrite(t *testing.T) {
 	e := New()
+	e.SecureMode = true
 	out, err := e.RenderSSR(`@signal(counter = 1)@signal(open = false)@reactive(counter, open) {<button on:click="counter += 1">Add</button><button on:click="toggle(open)">Toggle</button><span>${counter}</span>}`, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, `data-spl-on-click="counter += 1"`) {
+	if !strings.Contains(out, `data-spl-on-click="[{&#34;kind&#34;:&#34;add&#34;,&#34;target&#34;:&#34;counter&#34;,&#34;value&#34;:1}]"`) {
 		t.Fatalf("expected increment attribute rewrite, got %q", out)
 	}
-	if !strings.Contains(out, `data-spl-on-click="toggle(open)"`) {
+	if !strings.Contains(out, `data-spl-on-click="[{&#34;kind&#34;:&#34;toggle&#34;,&#34;target&#34;:&#34;open&#34;}]"`) {
 		t.Fatalf("expected function-style toggle rewrite, got %q", out)
 	}
-	if !strings.Contains(out, `[spl:event]`) {
-		t.Fatalf("expected event error debug hook, got %q", out)
+	if !strings.Contains(out, `type="application/json" data-spl-hydration`) {
+		t.Fatalf("expected CSP-safe JSON hydration payload, got %q", out)
 	}
 }
 
 func TestQuotedAttributeBracesInsideReactiveBlock(t *testing.T) {
 	e := New()
-	out, err := e.RenderSSR(`@signal(counter = 1)@signal(lastAction = "none")@reactive(counter, lastAction) {<button on:click="(() => { counter += 2; lastAction = 'anonymous function'; })">Anon</button><button on:click="counter += 1; lastAction = 'inline'">Inline</button><p>${counter}</p>}`, nil)
-	if err != nil {
-		t.Fatal(err)
+	e.SecureMode = true
+	_, err := e.RenderSSR(`@signal(counter = 1)@signal(lastAction = "none")@reactive(counter, lastAction) {<button on:click="(() => { counter += 2; lastAction = 'anonymous function'; })">Anon</button><button on:click="counter += 1; lastAction = 'inline'">Inline</button><p>${counter}</p>}`, nil)
+	if err == nil {
+		t.Fatal("expected unsafe anonymous function hydration to be rejected")
 	}
-	for _, needle := range []string{`data-spl-on-click="(() =`, `anonymous function`, `data-spl-on-click="counter += 1; lastAction = &#39;inline&#39;"`} {
-		if !strings.Contains(out, needle) {
-			t.Fatalf("expected %q in output, got %q", needle, out)
-		}
+	if !strings.Contains(err.Error(), "unsafe event expression") {
+		t.Fatalf("expected unsafe event expression error, got %v", err)
 	}
 }
 
 func TestHandlerDirectiveSerializedForHydration(t *testing.T) {
 	e := New()
+	e.SecureMode = true
 	out, err := e.RenderSSR(`@signal(counter = 1)@signal(lastAction = "none")@handler(incrementByTwo) { counter += 2; lastAction = 'handler:incrementByTwo'; }@reactive(counter, lastAction) {<button on:click="incrementByTwo">Named</button><p>${counter}</p>}`, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -151,6 +151,33 @@ func TestHandlerDirectiveSerializedForHydration(t *testing.T) {
 	}
 	if !strings.Contains(out, `data-spl-on-click="incrementByTwo"`) {
 		t.Fatalf("expected named handler reference in output, got %q", out)
+	}
+	if !strings.Contains(out, `"kind":"add"`) || !strings.Contains(out, `"kind":"set"`) {
+		t.Fatalf("expected safe structured handler actions, got %q", out)
+	}
+}
+
+func TestDebounceAttributeEventRewrite(t *testing.T) {
+	e := New()
+	e.SecureMode = true
+	out, err := e.RenderSSR(`@signal(query = "")@reactive(query) {<input on:input="debounce(query = 'go', 250)" value="${query}" />}`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `data-spl-on-input="{&#34;delay&#34;:250,&#34;actions&#34;:[{&#34;kind&#34;:&#34;set&#34;,&#34;target&#34;:&#34;query&#34;,&#34;value&#34;:&#34;go&#34;}]}"`) {
+		t.Fatalf("expected debounced attribute rewrite, got %q", out)
+	}
+}
+
+func TestDebounceNamedHandlerRewrite(t *testing.T) {
+	e := New()
+	e.SecureMode = true
+	out, err := e.RenderSSR(`@signal(counter = 0)@handler(increment) { counter += 1; }@reactive(counter) {<button on:click="debounce(increment, 300)">Add</button>}`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `data-spl-on-click="{&#34;delay&#34;:300,&#34;handler&#34;:&#34;increment&#34;}"`) {
+		t.Fatalf("expected debounced handler rewrite, got %q", out)
 	}
 }
 

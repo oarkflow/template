@@ -1,7 +1,7 @@
 @// TAB 2: PREFERENCES
 @// Uses: @for over server data, @match for priority badges, data-spl-model
 
-<div data-tab-panel="preferences" style="display: none;">
+<div data-spl-if="tabPreferences" style="display: none;">
     @render("SectionCard", {"heading": "Select, Radio, Checkboxes & Search", "sectionLabel": "Preferences"}) {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
             @render("FormField", {"label": "Country (" + totalCountries + " available)"}) {
@@ -20,32 +20,21 @@
             }
         </div>
 
-        <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.35rem;">
-            <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">Role Permissions</span>
-            <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-role-perms" title="View role permissions">i</button>
+        <div style="margin-top: 0.75rem;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.45rem;">Role Permissions</div>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                @for(r in roles) {
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <strong style="min-width: 120px;">${r.Label}:</strong>
+                        <span style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                            @for(perm in r.Permissions) {
+                                <code style="background: #dbeafe; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.7rem;">${perm}</code>
+                            }
+                        </span>
+                    </div>
+                }
+            </div>
         </div>
-
-        <dialog id="dlg-role-perms">
-            <div class="dialog-header">
-                <h4>Role Permissions</h4>
-                <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
-            </div>
-            <div class="dialog-body">
-                <p style="margin-bottom: 0.5rem;">From <code>[]Role</code> struct &mdash; nested <code>[]string</code> permissions:</p>
-                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                    @for(r in roles) {
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <strong style="min-width: 120px;">${r.Label}:</strong>
-                            <span style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                                @for(perm in r.Permissions) {
-                                    <code style="background: #dbeafe; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.7rem;">${perm}</code>
-                                }
-                            </span>
-                        </div>
-                    }
-                </div>
-            </div>
-        </dialog>
 
         <div style="margin-top: 0.75rem;">
             <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Priority Level</label>

@@ -2,7 +2,7 @@ module github.com/oarkflow/template
 
 go 1.26.1
 
-require github.com/oarkflow/interpreter v0.0.4
+require github.com/oarkflow/interpreter v0.0.5
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

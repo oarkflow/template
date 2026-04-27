@@ -61,28 +61,28 @@ type Filter func(value any, args ...string) string
 type exprKind int
 
 const (
-	exprGeneric   exprKind = iota // requires full interpreter.Eval
-	exprIdent                     // simple identifier: ${name}
-	exprDot                       // single dot access: ${item.name}
-	exprStringLit                 // string literal: ${"hello"}
-	exprIntLit                    // integer literal: ${42}
-	exprBoolTrue                  // true
-	exprBoolFalse                 // false
-	exprConstHash                 // constant hash literal: {"key": "val", ...}
-	exprCmpEqStr                  // identifier == "literal" or "literal" == identifier
-	exprCmpNeqStr                 // identifier != "literal" or "literal" != identifier
-	exprCmpEqIdent                // identifier == identifier
-	exprCmpNeqIdent               // identifier != identifier
+	exprGeneric     exprKind = iota // requires full interpreter.Eval
+	exprIdent                       // simple identifier: ${name}
+	exprDot                         // single dot access: ${item.name}
+	exprStringLit                   // string literal: ${"hello"}
+	exprIntLit                      // integer literal: ${42}
+	exprBoolTrue                    // true
+	exprBoolFalse                   // false
+	exprConstHash                   // constant hash literal: {"key": "val", ...}
+	exprCmpEqStr                    // identifier == "literal" or "literal" == identifier
+	exprCmpNeqStr                   // identifier != "literal" or "literal" != identifier
+	exprCmpEqIdent                  // identifier == identifier
+	exprCmpNeqIdent                 // identifier != identifier
 )
 
 // exprFastPath holds pre-analyzed metadata for fast expression evaluation.
 type exprFastPath struct {
 	kind        exprKind
-	ident       string              // for exprIdent: the variable name; for exprDot: the left identifier
-	field       string              // for exprDot: the field name
-	strVal      string              // for exprStringLit
-	intVal      int64               // for exprIntLit
-	constResult interpreter.Object  // for exprConstHash: cached evaluation result (cloned on use)
+	ident       string             // for exprIdent: the variable name; for exprDot: the left identifier
+	field       string             // for exprDot: the field name
+	strVal      string             // for exprStringLit
+	intVal      int64              // for exprIntLit
+	constResult interpreter.Object // for exprConstHash: cached evaluation result (cloned on use)
 }
 
 // componentDef holds a registered component's body and declared props.
@@ -97,25 +97,39 @@ type compiledTemplate struct {
 	Imports    []string
 }
 
+// CacheStats exposes lightweight counts for the engine's in-memory caches.
+type CacheStats struct {
+	ParsedFiles       int
+	ParsedTemplates   int
+	CompiledFiles     int
+	CompiledTemplates int
+	ExprPrograms      int
+	ExprFastPaths     int
+	Components        int
+	GlobalEnvReady    bool
+}
+
 // Engine is the main entry point for rendering SPL templates.
 type Engine struct {
-	BaseDir           string                          // directory for resolving includes/layouts
-	Filters           map[string]Filter               // registered filters
-	Globals           map[string]any                  // global template variables merged into every render
-	AutoEscape        bool                            // auto HTML-escape ${} output (default: true)
-	MaxDepth          int                             // max include/layout nesting depth (default: 64)
-	Components        map[string]componentDef         // registered reusable components
-	slotStack         []*slotContext                  // stack for nested component slot contexts
-	watchState        map[string]string               // @watch: expr → last evaluated value string
-	exprCache         map[string]*interpreter.Program // cached parsed expression ASTs
-	fileCache         map[string][]Node               // cached parsed template files by resolved path
-	tmplCache         map[string][]Node               // cached parsed template strings
-	compiledFileCache map[string]*compiledTemplate
-	compiledTextCache map[string]*compiledTemplate
-	baseEnv           *interpreter.Environment // base environment for the current render call
-	globalEnv         *interpreter.Environment // cached global environment (created once)
+	BaseDir             string                          // directory for resolving includes/layouts
+	Filters             map[string]Filter               // registered filters
+	Globals             map[string]any                  // global template variables merged into every render
+	AutoEscape          bool                            // auto HTML-escape ${} output (default: true)
+	MaxDepth            int                             // max include/layout nesting depth (default: 64)
+	Components          map[string]componentDef         // registered reusable components
+	slotStack           []*slotContext                  // stack for nested component slot contexts
+	watchState          map[string]string               // @watch: expr → last evaluated value string
+	exprCache           map[string]*interpreter.Program // cached parsed expression ASTs
+	fileCache           map[string][]Node               // cached parsed template files by resolved path
+	tmplCache           map[string][]Node               // cached parsed template strings
+	compiledFileCache   map[string]*compiledTemplate
+	compiledTextCache   map[string]*compiledTemplate
+	baseEnv             *interpreter.Environment // base environment for the current render call
+	globalEnv           *interpreter.Environment // cached global environment (created once)
 	hydration           *hydrationState          // SSR hydration state for the current render call
 	HydrationRuntimeURL string                   // if set, emit <script src="..."> instead of inlining runtime
+	CSPNonce            string                   // optional nonce applied to executable hydration script tags
+	SecureMode          bool                     // enforce CSP-safe, non-eval hydration output (default: false)
 	DisableDebug        bool                     // exclude debug/getRenderStats from hydration runtime
 	DisableAPI          bool                     // exclude API integration (patchAPI, serializeForm, apiParse) from hydration runtime
 	mu                  *sync.RWMutex
@@ -139,6 +153,7 @@ func New() *Engine {
 		tmplCache:         make(map[string][]Node),
 		compiledFileCache: make(map[string]*compiledTemplate),
 		compiledTextCache: make(map[string]*compiledTemplate),
+		SecureMode:        false,
 		mu:                &sync.RWMutex{},
 	}
 	cacheRegistry.mu.Lock()
@@ -190,29 +205,56 @@ func (e *Engine) Render(tmpl string, data map[string]any) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("template parse error: %w", err)
 	}
-	return e.renderCompiled(compiled, data, e.hydration)
+	out, err := e.renderCompiled(compiled, data, e.hydration)
+	if err != nil {
+		return "", err
+	}
+	if err := e.ensureSecureRenderedHTML(out); err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 // RenderFile loads a template file relative to BaseDir and renders it.
 func (e *Engine) RenderFile(path string, data map[string]any) (string, error) {
-	resolved := e.resolvePath(path)
+	resolved, err := e.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("template file error (%s): %w", path, err)
+	}
 	compiled, err := e.compileFileTemplate(resolved)
 	if err != nil {
 		return "", fmt.Errorf("template file error (%s): %w", path, err)
 	}
-	return e.renderCompiled(compiled, data, e.hydration)
+	out, err := e.renderCompiled(compiled, data, e.hydration)
+	if err != nil {
+		return "", err
+	}
+	if err := e.ensureSecureRenderedHTML(out); err != nil {
+		return "", err
+	}
+	return out, nil
 }
 
 // RenderSSRFile renders a template file and injects hydration metadata.
 func (e *Engine) RenderSSRFile(path string, data map[string]any) (string, error) {
-	resolved := e.resolvePath(path)
+	resolved, err := e.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("template file error (%s): %w", path, err)
+	}
 	compiled, err := e.compileFileTemplate(resolved)
 	if err != nil {
 		return "", fmt.Errorf("template file error (%s): %w", path, err)
 	}
 	state := &hydrationState{Signals: make(map[string]any)}
-	renderer := e.cloneForRender(state, cloneComponentDefs(e.Components))
+	renderer := e.cloneForRender(state, e.cloneRegisteredComponents())
 	out, err := renderer.renderCompiled(compiled, data, state)
+	if err != nil {
+		return "", err
+	}
+	if err := renderer.ensureSecureRenderedHTML(out); err != nil {
+		return "", err
+	}
+	out, err = renderer.prepareHydrationOutput(out)
 	if err != nil {
 		return "", err
 	}
@@ -221,7 +263,10 @@ func (e *Engine) RenderSSRFile(path string, data map[string]any) (string, error)
 
 // RenderStreamFile streams a parsed template file to a writer.
 func (e *Engine) RenderStreamFile(w io.Writer, path string, data map[string]any) error {
-	resolved := e.resolvePath(path)
+	resolved, err := e.resolvePath(path)
+	if err != nil {
+		return fmt.Errorf("template file error (%s): %w", path, err)
+	}
 	compiled, err := e.compileFileTemplate(resolved)
 	if err != nil {
 		return fmt.Errorf("template file error (%s): %w", path, err)
@@ -238,6 +283,22 @@ func (e *Engine) InvalidateCaches() {
 	e.compiledFileCache = make(map[string]*compiledTemplate)
 	e.compiledTextCache = make(map[string]*compiledTemplate)
 	e.watchState = make(map[string]string)
+}
+
+// CacheStats returns current cache entry counts for observability and tests.
+func (e *Engine) CacheStats() CacheStats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return CacheStats{
+		ParsedFiles:       len(e.fileCache),
+		ParsedTemplates:   len(e.tmplCache),
+		CompiledFiles:     len(e.compiledFileCache),
+		CompiledTemplates: len(e.compiledTextCache),
+		ExprPrograms:      len(e.exprCache),
+		ExprFastPaths:     len(e.exprMeta),
+		Components:        len(e.Components),
+		GlobalEnvReady:    e.globalEnv != nil,
+	}
 }
 
 // loadFile reads and parses a template file, using the file cache.
@@ -280,6 +341,12 @@ func cloneComponentDefs(src map[string]componentDef) map[string]componentDef {
 		cloned[k] = v
 	}
 	return cloned
+}
+
+func (e *Engine) cloneRegisteredComponents() map[string]componentDef {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return cloneComponentDefs(e.Components)
 }
 
 func (e *Engine) compileStringTemplate(tmpl string) (*compiledTemplate, error) {
@@ -386,7 +453,10 @@ func (e *Engine) renderCompiled(ct *compiledTemplate, data map[string]any, state
 
 func (e *Engine) registerImportedComponents(imports []string, components map[string]componentDef, seen map[string]struct{}) error {
 	for _, path := range imports {
-		resolved := e.resolvePath(path)
+		resolved, err := e.resolvePath(path)
+		if err != nil {
+			return fmt.Errorf("import %s: %w", path, err)
+		}
 		if _, ok := seen[resolved]; ok {
 			continue
 		}
@@ -405,11 +475,32 @@ func (e *Engine) registerImportedComponents(imports []string, components map[str
 	return nil
 }
 
-func (e *Engine) resolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
+func (e *Engine) resolvePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("template path is required")
 	}
-	return filepath.Join(e.BaseDir, path)
+	baseDir := e.BaseDir
+	if baseDir == "" {
+		baseDir = "."
+	}
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve base dir: %w", err)
+	}
+	cleanPath := filepath.Clean(path)
+	if filepath.IsAbs(cleanPath) {
+		return "", fmt.Errorf("absolute template paths are not allowed")
+	}
+	resolved := filepath.Join(baseAbs, cleanPath)
+	rel, err := filepath.Rel(baseAbs, resolved)
+	if err != nil {
+		return "", fmt.Errorf("resolve template path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("template path escapes base directory")
+	}
+	return resolved, nil
 }
 
 // mergeData returns a new map with globals as defaults, overridden by data.

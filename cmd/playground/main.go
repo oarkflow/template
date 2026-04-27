@@ -656,6 +656,7 @@ func main() {
 		engine := template.New()
 		engine.BaseDir = cwd
 		engine.AutoEscape = true
+		engine.SecureMode = false
 
 		renderStart := time.Now()
 		rendered, renderErr := engine.RenderSSR(req.Template, data)

@@ -1,10 +1,7 @@
 @// SERVER-SIDE STATS BANNER — uses @for, @let, filters
 
 <div class="card" style="background: #f0f9ff; border-color: #bae6fd;">
-    <div class="section-label">
-        Form Configuration (server-rendered from Go structs)
-        <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-server-stats" title="Data types info">i</button>
-    </div>
+    <div class="section-label">Form Configuration (server-rendered from Go structs)</div>
     <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem;">
         <span class="badge badge-blue">${totalCountries} Countries</span>
         <span class="badge badge-purple">${totalRoles} Roles</span>
@@ -17,26 +14,17 @@
             <span class="badge badge-red">Signup: Disabled</span>
         }
     </div>
+    <div style="margin-top: 0.7rem; font-size: 0.78rem; color: #475569; line-height: 1.6;">
+        <strong>Typed input data:</strong>
+        <code>[]Country</code>,
+        <code>[]Role</code>,
+        <code>[]Priority</code>,
+        <code>FormConfig</code>,
+        and <code>map[string]string</code>.
+    </div>
+    <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;">
+        @for(c in countries) {
+            <span class="badge" style="background: #f1f5f9; font-size: 0.7rem;">${c.Code | upper}: ${c.Region}</span>
+        }
+    </div>
 </div>
-
-<dialog id="dlg-server-stats">
-    <div class="dialog-header">
-        <h4>Server Data Types</h4>
-        <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
-    </div>
-    <div class="dialog-body">
-        <p><strong>Data types demonstrated:</strong></p>
-        <p style="margin-top: 0.35rem;">
-            <code>[]Country</code> (struct slice),
-            <code>[]Role</code> (struct with nested <code>[]string</code>),
-            <code>[]Priority</code> (custom type slice),
-            <code>FormConfig</code> (struct),
-            <code>map[string]string</code> (typed map)
-        </p>
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;">
-            @for(c in countries) {
-                <span class="badge" style="background: #f1f5f9; font-size: 0.7rem;">${c.Code | upper}: ${c.Region}</span>
-            }
-        </div>
-    </div>
-</dialog>

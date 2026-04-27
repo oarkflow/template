@@ -1,8 +1,11 @@
 @// TAB 5: API SUBMIT
 @// Uses: data-spl-api-* for POST, @reactive for response display
 
-<div data-tab-panel="api" style="display: none;">
+<div data-spl-if="tabAPI" style="display: none;">
     @render("SectionCard", {"heading": "Submit Form Data via API", "sectionLabel": "API Integration"}) {
+        <p style="font-size: 0.78rem; color: #64748b; line-height: 1.6; margin-bottom: 0.75rem;">
+            This button posts the current form signals to <code>/api/submit</code> using declarative <code>data-spl-api-*</code> attributes and renders the JSON response back into the page.
+        </p>
         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
             <button
                 data-spl-api-url="/api/submit"
@@ -14,7 +17,6 @@
                 style="padding: 0.45rem 1.25rem; border-radius: 0.375rem; border: none; background: #8b5cf6; color: white; font-size: 0.95rem; font-weight: 600; cursor: pointer;">
                 POST to /api/submit
             </button>
-            <button class="info-btn" on:click="openInfoDialog" data-dialog="dlg-api-info" title="How API integration works">i</button>
         </div>
 
         @reactive(apiResult) {
@@ -25,36 +27,3 @@
         }
     }
 </div>
-
-<dialog id="dlg-api-info">
-    <div class="dialog-header">
-        <h4>API Integration &mdash; How It Works</h4>
-        <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
-    </div>
-    <div class="dialog-body">
-        <p style="margin-bottom: 0.75rem;">
-            This tab demonstrates <code>data-spl-api-*</code> attributes for making HTTP requests.
-            Click the button to POST the current form data to <code>/api/submit</code>.
-            The server validates the data and returns a JSON response, which is stored in the
-            <code>apiResult</code> signal and rendered reactively.
-        </p>
-        <table style="margin-top: 0.35rem;">
-            <thead>
-                <tr>
-                    <th>Attribute</th>
-                    <th>Value</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                @for(attr in [{"name": "data-spl-api-url", "val": "/api/submit", "desc": "The endpoint to call"}, {"name": "data-spl-api-method", "val": "POST", "desc": "HTTP method"}, {"name": "data-spl-api-target", "val": "apiResult", "desc": "Signal to store response in"}, {"name": "data-spl-api-parse", "val": "json", "desc": "Parse response as JSON"}, {"name": "data-spl-api-event", "val": "click", "desc": "Trigger on click event"}]) {
-                    <tr>
-                        <td><code>${attr.name}</code></td>
-                        <td><code>${attr.val}</code></td>
-                        <td>${attr.desc}</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</dialog>

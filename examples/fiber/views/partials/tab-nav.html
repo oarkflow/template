@@ -1,13 +1,38 @@
 @// TAB NAVIGATION
 
-@let(tabs = [{"key": "personal", "label": "Personal Info"}, {"key": "preferences", "label": "Preferences"}, {"key": "sliders", "label": "Sliders & Ranges"}, {"key": "extras", "label": "Date, Time & Color"}, {"key": "api", "label": "API Submit"}, {"key": "showcase", "label": "Showcase"}])
-
 <div class="card" style="padding: 0; overflow: hidden;">
-    <div style="display: flex; border-bottom: 2px solid #e2e8f0; background: #f8fafc;">
-        @for(tab in tabs) {
-            <button on:click="switchTab" data-tab-btn="${tab.key}" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: @if(loop.first) { #1e40af } @else { #64748b }; border-bottom: 2px solid @if(loop.first) { #3b82f6 } @else { transparent }; margin-bottom: -2px;">
-                ${tab.label}
-            </button>
-        }
-    </div>
+    @reactive(tabPersonal, tabPreferences, tabSliders, tabExtras, tabAPI, tabShowcase) {
+        <div style="display: flex; border-bottom: 2px solid #e2e8f0; background: #f8fafc; flex-wrap: wrap;">
+            @if(tabPersonal) {
+                <button on:click="tabPersonal = true; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">Personal Info</button>
+            } @else {
+                <button on:click="tabPersonal = true; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">Personal Info</button>
+            }
+            @if(tabPreferences) {
+                <button on:click="tabPersonal = false; tabPreferences = true; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">Preferences</button>
+            } @else {
+                <button on:click="tabPersonal = false; tabPreferences = true; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">Preferences</button>
+            }
+            @if(tabSliders) {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = true; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">Sliders &amp; Ranges</button>
+            } @else {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = true; tabExtras = false; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">Sliders &amp; Ranges</button>
+            }
+            @if(tabExtras) {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = true; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">Date, Time &amp; Color</button>
+            } @else {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = true; tabAPI = false; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">Date, Time &amp; Color</button>
+            }
+            @if(tabAPI) {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = true; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">API Submit</button>
+            } @else {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = true; tabShowcase = false" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">API Submit</button>
+            }
+            @if(tabShowcase) {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = true" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #1e40af; border-bottom: 2px solid #3b82f6; margin-bottom: -2px;">Showcase</button>
+            } @else {
+                <button on:click="tabPersonal = false; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = true" style="flex: 1; padding: 0.55rem 0.75rem; border: none; background: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -2px;">Showcase</button>
+            }
+        </div>
+    }
 </div>

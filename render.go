@@ -177,7 +177,10 @@ func (e *Engine) renderNodes(nodes []Node, data map[string]any, depth int) (stri
 
 // renderLayout handles @extends with @define blocks.
 func (e *Engine) renderLayout(layoutPath string, defines map[string][]Node, data map[string]any, depth int) (string, error) {
-	resolved := e.resolvePath(layoutPath)
+	resolved, err := e.resolvePath(layoutPath)
+	if err != nil {
+		return "", fmt.Errorf("layout file error: %w", err)
+	}
 	layoutNodes, err := e.loadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("layout file error: %w", err)
@@ -373,7 +376,9 @@ func (e *Engine) renderExpr(n *ExprNode, env *interpreter.Environment) (string, 
 
 	// Apply filters
 	for _, fc := range n.Filters {
+		e.mu.RLock()
 		filterFn, ok := e.Filters[fc.Name]
+		e.mu.RUnlock()
 		if !ok {
 			return "", fmt.Errorf("unknown filter: %s", fc.Name)
 		}
@@ -544,9 +549,9 @@ var (
 
 // loopMeta holds reusable Integer pointers to avoid per-iteration allocations.
 type loopMeta struct {
-	hash                    *interpreter.Hash
-	indexVal, index1Val     *interpreter.Integer
-	lengthVal               *interpreter.Integer
+	hash                *interpreter.Hash
+	indexVal, index1Val *interpreter.Integer
+	lengthVal           *interpreter.Integer
 }
 
 func newLoopMeta(length int) *loopMeta {
@@ -642,15 +647,25 @@ func (e *Engine) evalMatchCase(c MatchCase, value interpreter.Object, env *inter
 	src := "match (__matchval__) { case " + c.PatternExpr + " => true }"
 
 	// Check cache
+	e.mu.RLock()
 	program, ok := e.exprCache[src]
+	e.mu.RUnlock()
 	if !ok {
 		l := interpreter.NewLexer(src)
 		p := interpreter.NewParser(l)
-		program = p.ParseProgram()
+		parsed := p.ParseProgram()
 		if errs := p.Errors(); len(errs) > 0 {
 			return false, nil, fmt.Errorf("pattern parse error: %s", strings.Join(errs, "; "))
 		}
-		e.exprCache[src] = program
+		e.mu.Lock()
+		if cached, exists := e.exprCache[src]; exists {
+			program = cached
+		} else {
+			evictMap(e.exprCache, maxExprCacheSize)
+			e.exprCache[src] = parsed
+			program = parsed
+		}
+		e.mu.Unlock()
 	}
 
 	// Extract the MatchExpression and its first case's pattern
@@ -695,7 +710,10 @@ func (e *Engine) renderInclude(n *IncludeNode, env *interpreter.Environment, dat
 		return "", fmt.Errorf("max include depth (%d) exceeded", e.MaxDepth)
 	}
 
-	resolved := e.resolvePath(n.Path)
+	resolved, err := e.resolvePath(n.Path)
+	if err != nil {
+		return "", fmt.Errorf("@include %s: %w", n.Path, err)
+	}
 	nodes, err := e.loadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("@include %s: %w", n.Path, err)
@@ -751,7 +769,10 @@ func (e *Engine) renderImport(n *ImportNode, env *interpreter.Environment, data 
 	// Load and register components from the imported file at render time.
 	// This handles @import inside @define blocks where the compile-time
 	// top-level scan cannot reach.
-	resolved := e.resolvePath(n.Path)
+	resolved, err := e.resolvePath(n.Path)
+	if err != nil {
+		return "", fmt.Errorf("@import %s: %w", n.Path, err)
+	}
 	nodes, err := e.loadFile(resolved)
 	if err != nil {
 		return "", fmt.Errorf("@import %s: %w", n.Path, err)

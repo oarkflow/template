@@ -1,21 +1,14 @@
-@// FEATURES USED — server-rendered reference table (in dialog)
+@// FEATURES USED — server-rendered reference table
 @// Uses: @for, @switch for badge colors, filters
 
-@let(features = [{"directive": "@signal", "category": "state", "desc": "Reactive client-side state (JSON objects)"}, {"directive": "@reactive", "category": "rendering", "desc": "Auto-rerender on signal change"}, {"directive": "@handler", "category": "events", "desc": "Named event callbacks with setSignal/signal/toggle"}, {"directive": "@component", "category": "components", "desc": "Reusable UI with props, slots, defaults"}, {"directive": "@render", "category": "components", "desc": "Invoke component with props and slot content"}, {"directive": "@slot / @fill", "category": "components", "desc": "Content injection points in components"}, {"directive": "@for", "category": "logic", "desc": "Loop with $loop metadata (index, first, last)"}, {"directive": "@if / @else", "category": "logic", "desc": "Conditional rendering (client + server)"}, {"directive": "@match / @case", "category": "logic", "desc": "Pattern matching with guards"}, {"directive": "@switch / @case", "category": "logic", "desc": "Multi-way branching"}, {"directive": "@let / @computed", "category": "state", "desc": "Server-side computed variables"}, {"directive": "data-spl-model", "category": "binding", "desc": "Two-way binding with dot-path (personal.email)"}, {"directive": "data-spl-ref", "category": "binding", "desc": "Named DOM element refs, accessed via ref() in handlers"}, {"directive": "ref() / select() / selectAll()", "category": "events", "desc": "DOM element access: named refs and CSS selectors"}, {"directive": "data-spl-api-*", "category": "api", "desc": "Declarative HTTP requests (GET/POST)"}, {"directive": "filters (| pipe)", "category": "output", "desc": "title, upper, length, replace, truncate, etc."}, {"directive": "@extends / @block", "category": "layout", "desc": "Template inheritance and content blocks"}, {"directive": "@include", "category": "layout", "desc": "Include partials"}, {"directive": "@import", "category": "layout", "desc": "Import reusable component definitions"}, {"directive": "setSignal(s, fn)", "category": "state", "desc": "React-style updater with spreading: fn(prev) => ({...prev, key: val})"}])
+@let(features = [{"directive": "@signal", "category": "state", "desc": "Reactive client-side state (JSON objects)"}, {"directive": "@reactive", "category": "rendering", "desc": "Auto-rerender on signal change"}, {"directive": "@component", "category": "components", "desc": "Reusable UI with props, slots, defaults"}, {"directive": "@render", "category": "components", "desc": "Invoke component with props and slot content"}, {"directive": "@slot / @fill", "category": "components", "desc": "Content injection points in components"}, {"directive": "@for", "category": "logic", "desc": "Loop with $loop metadata (index, first, last)"}, {"directive": "@if / @else", "category": "logic", "desc": "Conditional rendering for signal-backed UI state"}, {"directive": "@match / @case", "category": "logic", "desc": "Pattern matching with guards"}, {"directive": "@switch / @case", "category": "logic", "desc": "Multi-way branching"}, {"directive": "@let / @computed", "category": "state", "desc": "Server-side computed variables"}, {"directive": "data-spl-model", "category": "binding", "desc": "Two-way binding with dot-path (personal.email)"}, {"directive": "setSignal(path, value)", "category": "events", "desc": "Safe structured client-side signal updates"}, {"directive": "data-spl-api-*", "category": "api", "desc": "Declarative HTTP requests (GET/POST)"}, {"directive": "filters (| pipe)", "category": "output", "desc": "title, upper, length, replace, truncate, etc."}, {"directive": "@extends / @block", "category": "layout", "desc": "Template inheritance and content blocks"}, {"directive": "@include", "category": "layout", "desc": "Include partials"}, {"directive": "@import", "category": "layout", "desc": "Import reusable component definitions"}, {"directive": "secure hydration", "category": "security", "desc": "CSP-friendly hydration payload with structured event actions"}])
 
-<div class="card" style="margin-top: 0.35rem; display: flex; align-items: center; justify-content: space-between;">
-    <span style="font-size: 0.8rem; color: #64748b;">${features | length} SPL features demonstrated on this page</span>
-    <button on:click="openInfoDialog" data-dialog="dlg-features" style="padding: 0.3rem 0.75rem; border-radius: 0.3rem; border: 1px solid #3b82f6; background: #eff6ff; color: #1e40af; font-size: 0.75rem; cursor: pointer; font-weight: 500;">
-        View All Features
-    </button>
-</div>
-
-<dialog id="dlg-features">
-    <div class="dialog-header">
-        <h4>SPL Features Used on This Page</h4>
-        <button class="dialog-close" on:click="closeInfoDialog">&times;</button>
+<div class="card" style="margin-top: 0.35rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+        <span style="font-size: 0.8rem; color: #64748b;">${features | length} SPL features demonstrated on this page</span>
+        <span style="font-size: 0.75rem; color: #94a3b8;">Secure mode compatible demo surface</span>
     </div>
-    <div class="dialog-body">
+    <div style="overflow-x: auto;">
         <table>
             <thead>
                 <tr>
@@ -49,8 +42,8 @@
                 }
             </tbody>
         </table>
-        <p style="margin-top: 0.75rem; font-size: 0.8rem; color: #94a3b8;">
-            Total: ${features | length} features demonstrated &mdash; ${title | lower}
-        </p>
     </div>
-</dialog>
+    <p style="margin-top: 0.75rem; font-size: 0.8rem; color: #94a3b8;">
+        Total: ${features | length} features demonstrated &mdash; ${title | lower}
+    </p>
+</div>

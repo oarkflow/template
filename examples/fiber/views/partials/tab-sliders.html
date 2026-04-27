@@ -1,7 +1,7 @@
 @// TAB 3: SLIDERS & RANGES
 @// Uses: @reactive for live values, @for for stars, @if/@else for star color
 
-<div data-tab-panel="sliders" style="display: none;">
+<div data-spl-if="tabSliders" style="display: none;">
     @render("SectionCard", {"heading": "Range Inputs with Live Values & Star Rating", "sectionLabel": "Sliders & Ranges"}) {
         <div style="display: flex; flex-direction: column; gap: 1.25rem; margin-top: 0.6rem;">
             @for(slider in [{"key": "experience", "label": "Experience Level", "color": "#3b82f6", "step": 1, "gradient": "linear-gradient(90deg, #3b82f6, #8b5cf6)"}, {"key": "satisfaction", "label": "Satisfaction", "color": "#22c55e", "step": 5, "gradient": "linear-gradient(90deg, #ef4444, #f59e0b, #22c55e)"}, {"key": "volume", "label": "Volume", "color": "#f59e0b", "step": 1, "gradient": ""}]) {
@@ -31,18 +31,10 @@
 
             <div>
                 <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem;">Rating</label>
-                <div data-spl-ref="starRating" style="display: flex; gap: 0.35rem; align-items: center;">
-                    @for(star in [1, 2, 3, 4, 5]) {
-                        <button on:click="setRating" data-rating="${star}" style="font-size: 1.25rem; background: none; border: none; cursor: pointer; padding: 0; line-height: 1;">
-                            @if(star <= rating) {
-                                <span class="spl-star" style="color: #f59e0b;">&#9733;</span>
-                            } @else {
-                                <span class="spl-star" style="color: #d1d5db;">&#9733;</span>
-                            }
-                        </button>
-                    }
+                <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <input type="range" data-spl-model="rating" min="1" max="5" step="1" style="width: 100%; max-width: 18rem; accent-color: #f59e0b;" />
                     @reactive(rating) {
-                        <span style="margin-left: 0.75rem; font-size: 0.8rem; color: #64748b;">${rating} / 5</span>
+                        <span style="font-size: 0.8rem; color: #64748b;">${rating} / 5</span>
                     }
                 </div>
             </div>

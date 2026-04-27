@@ -36,8 +36,10 @@ const moduleCore = `var SPL=window.__SPL__=window.__SPL__||{};
 SPL.signals=SPL.signals||{};
 SPL.handlers=SPL.handlers||{};
 SPL.refs=SPL.refs||{};
+SPL.allowUnsafeEval=SPL.allowUnsafeEval||false;
 SPL.registerHandler=function(name,fn){
-  if(typeof name!=='string' || !name || typeof fn!=='function'){return;}
+  if(typeof name!=='string' || !name){return;}
+  if(typeof fn!=='function' && !Array.isArray(fn) && typeof fn!=='string'){return;}
   SPL.handlers[name]=fn;
 };
 SPL.ensureSignal=function(name,initial){
@@ -142,8 +144,150 @@ SPL.writePath=function(path,value){
   SPL.write(root,clone);
 };`
 
-// moduleScope: getScope proxy, expression evaluation, extractDeps
-const moduleScope = `SPL.reservedNames={event:true,element:true,signal:true,toggle:true,setSignal:true,ref:true,select:true,selectAll:true,SPL:true,Math:true,Number:true,String:true,Boolean:true,Date:true,JSON:true,console:true,document:true,window:true,undefined:true,NaN:true,Infinity:true};
+// moduleScope: safe client action execution and event dispatch
+const moduleScope = `SPL.allowedPath=/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+SPL.normalizePath=function(path){
+  if(typeof path!=='string'){return '';}
+  path=path.trim();
+  return SPL.allowedPath.test(path)?path:'';
+};
+SPL.readTarget=function(path){
+  path=SPL.normalizePath(path);
+  if(!path){return undefined;}
+  return path.indexOf('.')>=0?SPL.readPath(path):SPL.read(path);
+};
+SPL.writeTarget=function(path,value){
+  path=SPL.normalizePath(path);
+  if(!path){return value;}
+  if(path.indexOf('.')>=0){SPL.writePath(path,value);return value;}
+  SPL.write(path,value);
+  return value;
+};
+SPL.parseCallArgs=function(raw){
+  var args=[];var current='';var quote='';var escaped=false;var depth=0;
+  for(var i=0;i<raw.length;i++){
+    var ch=raw.charAt(i);
+    if(quote){
+      current+=ch;
+      if(escaped){escaped=false;continue;}
+      if(ch==='\\'){escaped=true;continue;}
+      if(ch===quote){quote='';}
+      continue;
+    }
+    if(ch==='"' || ch==="'"){quote=ch;current+=ch;continue;}
+    if(ch==='('){depth++;current+=ch;continue;}
+    if(ch===')'){if(depth>0){depth--;}current+=ch;continue;}
+    if(ch===',' && depth===0){args.push(current.trim());current='';continue;}
+    current+=ch;
+  }
+  var tail=current.trim();
+  if(tail){args.push(tail);}
+  return args;
+};
+SPL.parseDebounceExpression=function(spec){
+  if(typeof spec!=='string'){return null;}
+  spec=spec.trim();
+  if(spec.indexOf('debounce(')!==0 || spec.charAt(spec.length-1)!==')'){return null;}
+  var args=SPL.parseCallArgs(spec.slice('debounce('.length,-1));
+  if(args.length!==2){return null;}
+  var inner=args[0].trim();
+  var delay=Number(args[1].trim());
+  if(!inner || !isFinite(delay) || delay<0){return null;}
+  return {delay:delay,spec:inner};
+};
+SPL.scheduleDebounced=function(payload,event,element){
+  if(!payload){return undefined;}
+  var delay=Number(payload.delay||0);
+  if(!(delay>0)){
+    if(Array.isArray(payload.actions)){return SPL.executeActions(payload.actions);}
+    if(typeof payload.handler==='string'){return SPL.executeEvent(payload.handler,event,element);}
+    if(typeof payload.spec==='string'){return SPL.executeEvent(payload.spec,event,element);}
+    return undefined;
+  }
+  var key='__splDebounce_'+delay+'_';
+  if(Array.isArray(payload.actions)){key+='actions_'+JSON.stringify(payload.actions);}
+  else if(typeof payload.handler==='string'){key+='handler_'+payload.handler;}
+  else{key+='spec_'+String(payload.spec||'');}
+  if(element && element[key]){clearTimeout(element[key]);}
+  var run=function(){
+    if(Array.isArray(payload.actions)){return SPL.executeActions(payload.actions);}
+    if(typeof payload.handler==='string'){return SPL.executeEvent(payload.handler,event,element);}
+    if(typeof payload.spec==='string'){return SPL.executeEvent(payload.spec,event,element);}
+    return undefined;
+  };
+  var timer=setTimeout(function(){
+    if(element){delete element[key];}
+    run();
+  },delay);
+  if(element){element[key]=timer;}
+  return undefined;
+};
+SPL.executeActions=function(actions){
+  if(!Array.isArray(actions)){return undefined;}
+  actions.forEach(function(action){
+    if(!action || typeof action.kind!=='string'){return;}
+    var target=SPL.normalizePath(action.target||'');
+    if(!target){return;}
+    if(action.kind==='toggle'){
+      SPL.writeTarget(target,!Boolean(SPL.readTarget(target)));
+      return;
+    }
+    if(action.kind==='set'){
+      SPL.writeTarget(target,action.value);
+      return;
+    }
+    if(action.kind==='add'){
+      SPL.writeTarget(target,Number(SPL.readTarget(target)||0)+Number(action.value||0));
+      return;
+    }
+    if(action.kind==='sub'){
+      SPL.writeTarget(target,Number(SPL.readTarget(target)||0)-Number(action.value||0));
+    }
+  });
+  return undefined;
+};
+SPL.executeEvent=function(spec,event,element){
+  if(typeof spec!=='string' || !spec){return undefined;}
+  var debounceExpr=SPL.parseDebounceExpression(spec);
+  if(debounceExpr){return SPL.scheduleDebounced(debounceExpr,event,element);}
+  if(spec.charAt(0)==='{'){
+    try{
+      var payload=JSON.parse(spec);
+      if(payload && typeof payload==='object'){
+        if(payload.delay!=null || Array.isArray(payload.actions) || typeof payload.handler==='string' || typeof payload.spec==='string'){
+          return SPL.scheduleDebounced(payload,event,element);
+        }
+      }
+    } catch(err){
+      if(typeof console!=='undefined' && console.error){console.error('[spl:event]', {spec:spec, error:err});}
+      return undefined;
+    }
+  }
+  if(spec.charAt(0)==='['){
+    try{return SPL.executeActions(JSON.parse(spec));}
+    catch(err){
+      if(typeof console!=='undefined' && console.error){console.error('[spl:event]', {spec:spec, error:err});}
+      return undefined;
+    }
+  }
+  if(Object.prototype.hasOwnProperty.call(SPL.handlers,spec)){
+    var handler=SPL.handlers[spec];
+    if(typeof handler==='function'){return handler.call(element,event,element);}
+    if(typeof handler==='string'){
+      if(SPL.allowUnsafeEval && typeof SPL.executeLegacyEvent==='function'){return SPL.executeLegacyEvent(handler,event,element);}
+      return undefined;
+    }
+    return SPL.executeActions(handler);
+  }
+  if(SPL.allowUnsafeEval && typeof SPL.executeLegacyEvent==='function'){
+    return SPL.executeLegacyEvent(spec,event,element);
+  }
+  if(typeof console!=='undefined' && console.error){console.error('[spl:event]', {spec:spec, error:'unknown event handler'});}
+  return undefined;
+};`
+
+// moduleLegacyEval: legacy expression execution for compatibility mode only
+const moduleLegacyEval = `SPL.reservedNames={event:true,element:true,signal:true,toggle:true,setSignal:true,ref:true,select:true,selectAll:true,SPL:true,Math:true,Number:true,String:true,Boolean:true,Date:true,JSON:true,console:true,document:true,window:true,undefined:true,NaN:true,Infinity:true};
 SPL.getScope=function(event,element,useRefs){
   var helpers={
     event:event,
@@ -239,7 +383,7 @@ SPL.evalExpression=function(expr,event,element,useRefs){
   }
   return fn(SPL.getScope(event,element,!!useRefs),event,element);
 };
-SPL.executeEvent=function(expr,event,element){
+SPL.executeLegacyEvent=function(expr,event,element){
   try {
     return SPL.callHandler(SPL.evalExpression(expr,event,element,true),event,element);
   } catch (evalErr) {
@@ -385,12 +529,22 @@ SPL.patchBindings=function(root){
       if(attr.name.indexOf('data-spl-bind-')!==0){return;}
       var propName=attr.name.slice('data-spl-bind-'.length);
       var expr=attr.value;
+      var path=SPL.normalizePath(expr);
       var bindKey='__splBind_'+propName+'_'+expr;
       if(el[bindKey]){return;}
       el[bindKey]=true;
-      var updateExpr=function(){SPL.applyBinding(el,propName,SPL.evalExpression(expr,null,el,false));};
-      updateExpr();
-      SPL.extractDeps(expr).forEach(function(dep){SPL.subscribe(dep,updateExpr);});
+      if(path){
+        var rootSignal=path.split('.')[0];
+        var updateExpr=function(){SPL.applyBinding(el,propName,SPL.readTarget(path));};
+        updateExpr();
+        SPL.subscribe(rootSignal,updateExpr);
+        el.addEventListener(SPL.bindingEvent(el,propName),function(){SPL.writeTarget(path,SPL.readBindingValue(el,propName));});
+        return;
+      }
+      if(!SPL.allowUnsafeEval || typeof SPL.evalExpression!=='function' || typeof SPL.extractDeps!=='function'){return;}
+      var legacyUpdate=function(){SPL.applyBinding(el,propName,SPL.evalExpression(expr,null,el,false));};
+      legacyUpdate();
+      SPL.extractDeps(expr).forEach(function(dep){SPL.subscribe(dep,legacyUpdate);});
       if(/^[A-Za-z_][A-Za-z0-9_]*$/.test(expr)){
         el.addEventListener(SPL.bindingEvent(el,propName),function(){SPL.write(expr,SPL.readBindingValue(el,propName));});
       }
@@ -563,17 +717,17 @@ const moduleRefs = `SPL.patchRefs=function(root){
   });
 };`
 
-// splBootstrapJS is the per-page initialization code that reads the payload
-// and wires up signals, handlers, effects, and views.
-const splBootstrapJS = `Object.keys(payload.signals||{}).forEach(function(name){
+// splBootstrapJS reads inert JSON hydration payloads and wires up the page
+// without inline bootstrap code.
+const splBootstrapJS = `SPL.bootPayload=function(payload){
+SPL.allowUnsafeEval=payload.secure===false;
+Object.keys(payload.signals||{}).forEach(function(name){
 SPL.ensureSignal(name,payload.signals[name]);
 });
 Object.keys(payload.handlers||{}).forEach(function(name){
-var expr=payload.handlers[name];
-if(!expr){return;}
-SPL.registerHandler(name, function(event, element){
-return SPL.executeEvent(expr,event,element);
-});
+var actions=payload.handlers[name];
+if(!actions){return;}
+SPL.registerHandler(name,actions);
 });
 SPL.patch(document);
 (payload.effects||[]).forEach(function(effect){
@@ -601,7 +755,22 @@ SPL.debugRecord('view', view.Selector);
 };
 render();
 (view.Deps||[]).forEach(function(dep){SPL.subscribe(dep,render);});
-});`
+});
+};
+SPL.boot=function(root){
+var scope=root||document;
+var nodes=Array.from(scope.querySelectorAll?scope.querySelectorAll('script[data-spl-hydration][type="application/json"]'):[]);
+nodes.forEach(function(node){
+if(node.__splBooted){return;}
+node.__splBooted=true;
+try{SPL.bootPayload(JSON.parse(node.textContent||'{}'));}
+catch(err){if(typeof console!=='undefined' && console.error){console.error('[spl:boot]',err);}}
+});
+};
+if(typeof document!=='undefined'){
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){SPL.boot(document);});}
+else{SPL.boot(document);}
+}`
 
 // ---------------------------------------------------------------------------
 // JS Obfuscator — runs at init time, zero per-request cost
@@ -626,14 +795,13 @@ var splInternalProps = []string{
 	"apiParse",
 	"applyBinding",
 	"bindingEvent",
-	"callHandler",
+	"boot",
+	"bootPayload",
 	"captureFocus",
 	"debugRecord",
-	"evalExpression",
-	"expressionCache",
-	"extractDeps",
+	"executeActions",
 	"getRenderStats",
-	"getScope",
+	"normalizePath",
 	"patchAPI",
 	"patchBindings",
 	"patchConditionals",
@@ -641,14 +809,13 @@ var splInternalProps = []string{
 	"patchModels",
 	"patchRefs",
 	"readBindingValue",
+	"readTarget",
 	"readPath",
-	"reservedNames",
 	"restoreFocus",
-	"runStatement",
 	"serializeForm",
 	"signalName",
 	"signalRef",
-	"statementCache",
+	"writeTarget",
 	"writePath",
 }
 
@@ -814,7 +981,7 @@ func buildPatchFunction(features jsFeature) string {
 }
 
 // assembleRuntime builds the full runtime JS for the given feature set
-func assembleRuntime(features jsFeature, disableDebug bool) string {
+func assembleRuntime(features jsFeature, disableDebug bool, secureMode bool) string {
 	var sb strings.Builder
 
 	// Core + Scope are always included
@@ -822,6 +989,10 @@ func assembleRuntime(features jsFeature, disableDebug bool) string {
 	sb.WriteString("\n")
 	sb.WriteString(moduleScope)
 	sb.WriteString("\n")
+	if !secureMode {
+		sb.WriteString(moduleLegacyEval)
+		sb.WriteString("\n")
+	}
 
 	// Debug
 	if disableDebug {
@@ -867,6 +1038,8 @@ func assembleRuntime(features jsFeature, disableDebug bool) string {
 
 	// Patch function (adapted to included modules)
 	sb.WriteString(buildPatchFunction(features))
+	sb.WriteString("\n")
+	sb.WriteString(splBootstrapJS)
 
 	return sb.String()
 }
@@ -918,8 +1091,8 @@ func detectFeatures(renderedHTML string, effects []hydrationEffect, views []hydr
 // Obfuscated runtime cache
 // ---------------------------------------------------------------------------
 
-func getObfuscatedFull(disableDebug bool) string {
-	raw := assembleRuntime(featAll, disableDebug)
+func getObfuscatedFull(disableDebug, secureMode bool) string {
+	raw := assembleRuntime(featAll, disableDebug, secureMode)
 	return obfuscateJS(raw)
 }
 
@@ -929,10 +1102,13 @@ var moduleCache = struct {
 	cache map[jsFeature]string
 }{cache: make(map[jsFeature]string)}
 
-func getObfuscatedForFeatures(features jsFeature, disableDebug bool) string {
+func getObfuscatedForFeatures(features jsFeature, disableDebug, secureMode bool) string {
 	key := features
 	if disableDebug {
 		key |= 1 << 15
+	}
+	if secureMode {
+		key |= 1 << 14
 	}
 
 	moduleCache.RLock()
@@ -942,7 +1118,7 @@ func getObfuscatedForFeatures(features jsFeature, disableDebug bool) string {
 		return cached
 	}
 
-	raw := assembleRuntime(features, disableDebug)
+	raw := assembleRuntime(features, disableDebug, secureMode)
 	obfuscated := obfuscateJS(raw)
 
 	moduleCache.Lock()
@@ -971,12 +1147,12 @@ func init() {
 // with all features included. Serve this as a static .js file and set
 // Engine.HydrationRuntimeURL to enable browser caching across pages.
 func (e *Engine) RuntimeJS() string {
-	return getObfuscatedFull(e.DisableDebug)
+	return getObfuscatedFull(e.DisableDebug, e.SecureMode)
 }
 
 // RuntimeJSRaw returns the unobfuscated, minified SPL hydration runtime.
 // Useful for debugging.
 func (e *Engine) RuntimeJSRaw() string {
-	raw := assembleRuntime(featAll, e.DisableDebug)
+	raw := assembleRuntime(featAll, e.DisableDebug, e.SecureMode)
 	return minifyJS(raw)
 }

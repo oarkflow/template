@@ -3,7 +3,7 @@
 @// @click, @bind, @effect, @reactive, TODO CRUD, @lazy, @empty,
 @// @switch, filters, auto-escaping, named slots, prop aliases
 
-<div data-tab-panel="showcase" style="display: none;">
+<div data-spl-if="tabShowcase" style="display: none;">
 
     @// ─── Counter & Toggle Panel (SSR reactive) ───────────────────────────
 
@@ -147,10 +147,10 @@
     @// ─── Auto-escaping & raw output ──────────────────────────────────────
 
     @render("SectionCard", {"heading": "Auto-Escaping", "sectionLabel": "XSS Prevention"}) {
-        @let(dangerousInput = "<script>alert('xss')</script>")
+        @let(dangerousInput = "<strong>unsafe markup</strong>")
         <div style="font-size: 0.85rem;">
             <p><strong>Escaped (safe):</strong> <code>${dangerousInput}</code></p>
-            <p><strong>Raw (opt-in):</strong> <code>${raw dangerousInput}</code></p>
+            <p><strong>Secure mode note:</strong> raw HTML output is intentionally disabled for this page.</p>
         </div>
     }
 

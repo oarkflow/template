@@ -50,14 +50,15 @@ type ClickNode struct {
 func (n *ClickNode) nodeType() string { return "click" }
 
 type hydrationState struct {
-	Signals   map[string]any
-	Handlers  map[string]string
-	Effects   []hydrationEffect
-	Views     []hydrationView
-	BindID    int
-	EffectsID int
-	ViewID    int
-	NeedsBoot bool
+	Signals          map[string]any
+	Handlers         map[string]string
+	CompiledHandlers map[string][]clientAction
+	Effects          []hydrationEffect
+	Views            []hydrationView
+	BindID           int
+	EffectsID        int
+	ViewID           int
+	NeedsBoot        bool
 }
 
 type hydrationEffect struct {
@@ -91,8 +92,15 @@ func (e *Engine) RenderSSR(tmpl string, data map[string]any) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("template parse error: %w", err)
 	}
-	renderer := e.cloneForRender(state, cloneComponentDefs(e.Components))
+	renderer := e.cloneForRender(state, e.cloneRegisteredComponents())
 	out, err := renderer.renderCompiled(compiled, data, state)
+	if err != nil {
+		return "", err
+	}
+	if err := renderer.ensureSecureRenderedHTML(out); err != nil {
+		return "", err
+	}
+	out, err = renderer.prepareHydrationOutput(out)
 	if err != nil {
 		return "", err
 	}
@@ -103,44 +111,65 @@ func (e *Engine) renderHydrationScript(renderedHTML string) string {
 	if e.hydration == nil || !e.hydration.NeedsBoot {
 		return ""
 	}
+	handlers := any(e.hydration.Handlers)
+	if len(e.hydration.CompiledHandlers) > 0 {
+		handlers = e.hydration.CompiledHandlers
+	}
 	payload := map[string]any{
 		"signals":  e.hydration.Signals,
-		"handlers": e.hydration.Handlers,
+		"handlers": handlers,
 		"effects":  e.hydration.Effects,
 		"views":    e.hydration.Views,
+		"secure":   e.SecureMode,
 	}
 	encoded, _ := json.Marshal(payload)
 
 	var sb strings.Builder
 
-	// 1. Runtime: external URL or inline with tree-shaken + obfuscated code.
+	// 1. Per-page payload as inert JSON for CSP-safe bootstrapping.
+	sb.WriteString(`<script type="application/json" data-spl-hydration>`)
+	sb.WriteString(string(encoded))
+	sb.WriteString(`</script>`)
+
+	// 2. Runtime: external URL or inline with tree-shaken + obfuscated code.
 	if e.HydrationRuntimeURL != "" {
-		// External mode: full runtime served separately (all features).
-		sb.WriteString(`<script src="`)
-		sb.WriteString(e.HydrationRuntimeURL)
+		sb.WriteString(`<script`)
+		if e.CSPNonce != "" {
+			sb.WriteString(` nonce="`)
+			sb.WriteString(html.EscapeString(e.CSPNonce))
+			sb.WriteString(`"`)
+		}
+		sb.WriteString(` src="`)
+		sb.WriteString(html.EscapeString(e.HydrationRuntimeURL))
 		sb.WriteString(`"></script>`)
 	} else {
-		// Inline mode: detect features per-page for tree-shaking.
 		features := detectFeatures(renderedHTML, e.hydration.Effects, e.hydration.Views)
-		// Apply global flags.
 		if e.DisableAPI {
 			features &^= featAPI
 		}
 		if !e.DisableDebug {
 			features |= featDebug
 		}
-		runtime := getObfuscatedForFeatures(features, e.DisableDebug)
-		sb.WriteString(`<script data-spl-runtime>if(!window.__SPL_RT__){window.__SPL_RT__=1;`)
+		runtime := getObfuscatedForFeatures(features, e.DisableDebug, e.SecureMode)
+		sb.WriteString(`<script data-spl-runtime`)
+		if e.CSPNonce != "" {
+			sb.WriteString(` nonce="`)
+			sb.WriteString(html.EscapeString(e.CSPNonce))
+			sb.WriteString(`"`)
+		}
+		sb.WriteString(`>if(!window.__SPL_RT__){window.__SPL_RT__=1;`)
 		sb.WriteString(runtime)
 		sb.WriteString(`}</script>`)
 	}
 
-	// 2. Per-page payload + bootstrap (always inline, unique per page).
-	fmt.Fprintf(&sb, `<script data-spl-hydration>(function(){var payload=%s;`, string(encoded))
-	sb.WriteString(obfuscatedBootstrap)
-	sb.WriteString(`})();</script>`)
-
 	return sb.String()
+}
+
+func (e *Engine) prepareHydrationOutput(renderedHTML string) (string, error) {
+	if !e.SecureMode || e.hydration == nil || !e.hydration.NeedsBoot {
+		return renderedHTML, nil
+	}
+	return secureHydrationOutput(renderedHTML, e.hydration)
 }
 
 // validIdentRe matches safe JavaScript identifier names.

@@ -52,6 +52,65 @@ func TestRenderFileCachesCompiledTemplate(t *testing.T) {
 	}
 }
 
+func TestCacheStatsReportsTemplateAndExpressionCaches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "page.html")
+	if err := os.WriteFile(path, []byte(`<p>${msg}</p>`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New()
+	e.BaseDir = dir
+
+	if _, err := e.Render(`<h1>${title}</h1>`, map[string]any{"title": "Hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.RenderFile("page.html", map[string]any{"msg": "World"}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats := e.CacheStats()
+	if stats.ParsedFiles != 1 || stats.CompiledFiles != 1 {
+		t.Fatalf("expected file caches to contain one entry, got %+v", stats)
+	}
+	if stats.ParsedTemplates != 1 || stats.CompiledTemplates != 1 {
+		t.Fatalf("expected string template caches to contain one entry, got %+v", stats)
+	}
+	if stats.ExprPrograms == 0 || stats.ExprFastPaths == 0 {
+		t.Fatalf("expected expression caches to be populated, got %+v", stats)
+	}
+	if !stats.GlobalEnvReady {
+		t.Fatalf("expected global environment to be initialized, got %+v", stats)
+	}
+}
+
+func TestCacheStatsAfterInvalidateCaches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "page.html")
+	if err := os.WriteFile(path, []byte(`<p>${msg}</p>`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New()
+	e.BaseDir = dir
+
+	if _, err := e.Render(`<h1>${title}</h1>`, map[string]any{"title": "Hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.RenderFile("page.html", map[string]any{"msg": "World"}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.InvalidateCaches()
+	stats := e.CacheStats()
+	if stats.ParsedFiles != 0 || stats.ParsedTemplates != 0 || stats.CompiledFiles != 0 || stats.CompiledTemplates != 0 {
+		t.Fatalf("expected template caches to be cleared, got %+v", stats)
+	}
+	if stats.ExprPrograms == 0 || stats.ExprFastPaths == 0 {
+		t.Fatalf("expected expression caches to remain warm after template cache invalidation, got %+v", stats)
+	}
+}
+
 func TestConcurrentRenderIsolation(t *testing.T) {
 	e := New()
 	tmpl := `@signal(counter = value)@reactive(counter) {<span>${counter}</span>}`

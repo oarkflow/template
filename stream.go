@@ -3,6 +3,7 @@ package template
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"strings"
 	"sync"
@@ -76,7 +77,7 @@ func (sr *StreamRenderer) RenderStream(w io.Writer, tmpl string) error {
 // RenderStreamNodes renders already-parsed nodes to a writer.
 func (sr *StreamRenderer) RenderStreamNodes(w io.Writer, nodes []Node) error {
 	sr.writer = w
-	renderer := sr.engine.cloneForRender(nil, cloneComponentDefs(sr.engine.Components))
+	renderer := sr.engine.cloneForRender(nil, sr.engine.cloneRegisteredComponents())
 
 	var deferred []DeferNode
 	var mainContent strings.Builder
@@ -104,6 +105,9 @@ func (sr *StreamRenderer) RenderStreamNodes(w io.Writer, nodes []Node) error {
 			if err != nil {
 				return err
 			}
+			if err := renderer.ensureSecureRenderedHTML(rendered); err != nil {
+				return err
+			}
 			mainContent.WriteString(rendered)
 			// Flush after stream node
 			sr.mu.Lock()
@@ -119,6 +123,9 @@ func (sr *StreamRenderer) RenderStreamNodes(w io.Writer, nodes []Node) error {
 		default:
 			rendered, err := renderer.renderNodes([]Node{node}, sr.data, 0)
 			if err != nil {
+				return err
+			}
+			if err := renderer.ensureSecureRenderedHTML(rendered); err != nil {
 				return err
 			}
 			mainContent.WriteString(rendered)
@@ -148,8 +155,12 @@ func (sr *StreamRenderer) RenderStreamNodes(w io.Writer, nodes []Node) error {
 				if err != nil {
 					content = fmt.Sprintf(`<span class="spl-error">Error: %s</span>`, err.Error())
 				}
+				if secErr := deferRenderer.ensureSecureRenderedHTML(content); secErr != nil {
+					content = fmt.Sprintf(`<span class="spl-error">Error: %s</span>`, secErr.Error())
+				}
 				script := fmt.Sprintf(
-					`<script>document.getElementById('%s').innerHTML=%s;</script>`,
+					`<script%s>document.getElementById('%s').innerHTML=%s;</script>`,
+					scriptNonceAttr(sr.engine.CSPNonce),
 					def.ID,
 					jsonEscapeStr(content),
 				)
@@ -188,4 +199,11 @@ func jsonEscapeStr(s string) string {
 	}
 	// json.Marshal produces a valid JS string literal with proper escaping
 	return string(b)
+}
+
+func scriptNonceAttr(nonce string) string {
+	if nonce == "" {
+		return ""
+	}
+	return ` nonce="` + html.EscapeString(nonce) + `"`
 }

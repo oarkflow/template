@@ -9,6 +9,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -103,7 +105,7 @@ func (v *SPLViews) HydrationRuntimeURL(url string) *SPLViews {
 // Called once by Fiber at startup.
 func (v *SPLViews) Load() error {
 	v.engine.BaseDir = v.directory
-	v.engine.AutoEscape = false
+	v.engine.AutoEscape = true
 
 	return filepath.Walk(v.directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -204,9 +206,11 @@ func main() {
 	engine := New("./views")
 	engine.Reload(true) // dev mode: re-read templates on each request
 	engine.SSR(true)    // enable reactive hydration (@signal, @reactive, etc.)
+	engine.engine.SecureMode = true
 
 	// Serve the SPL hydration runtime as a cacheable static file.
-	engine.HydrationRuntimeURL("/static/spl-runtime.min.js")
+	runtimeVersion := runtimeAssetVersion(engine.engine.RuntimeJS())
+	engine.HydrationRuntimeURL("/static/spl-runtime.min.js?v=" + runtimeVersion)
 
 	// Set global variables available in all templates.
 	engine.engine.Globals["siteName"] = "SPL Fiber Demo"
@@ -214,6 +218,16 @@ func main() {
 	// Create Fiber app with SPL as the view engine.
 	app := fiber.New(fiber.Config{
 		Views: engine,
+	})
+
+	app.Use(func(c fiber.Ctx) error {
+		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+		c.Set("Referrer-Policy", "no-referrer")
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "DENY")
+		c.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+		c.Set("Cross-Origin-Opener-Policy", "same-origin")
+		return c.Next()
 	})
 
 	// Serve the SPL hydration runtime JS with aggressive caching.
@@ -317,8 +331,8 @@ func main() {
 	// --- TODO CRUD API (showcase tab) ---
 
 	var (
-		todoMu    sync.Mutex
-		todos     []map[string]any
+		todoMu     sync.Mutex
+		todos      []map[string]any
 		todoNextID int
 	)
 
@@ -354,4 +368,9 @@ func main() {
 
 	log.Println("SPL Fiber demo listening on http://localhost:3000")
 	log.Fatal(app.Listen(":3000"))
+}
+
+func runtimeAssetVersion(src string) string {
+	sum := sha256.Sum256([]byte(src))
+	return hex.EncodeToString(sum[:8])
 }

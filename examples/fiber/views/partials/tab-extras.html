@@ -1,7 +1,7 @@
 @// TAB 4: DATE, TIME & COLOR
 @// Uses: @reactive for live color preview, @component rendering
 
-<div data-tab-panel="extras" style="display: none;">
+<div data-spl-if="tabExtras" style="display: none;">
     @render("SectionCard", {"heading": "Specialized Input Types", "sectionLabel": "Date, Time & Color"}) {
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
             @render("FormField", {"label": "Birth Date"}) {

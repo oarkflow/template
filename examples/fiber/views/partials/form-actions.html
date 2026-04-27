@@ -3,10 +3,10 @@
 <div class="card" style="margin-top: 0.35rem;">
     <div class="section-label">Form Actions</div>
     <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-        <button on:click="submitForm" style="padding: 0.45rem 1.25rem; border-radius: 0.375rem; border: none; background: #3b82f6; color: white; font-size: 0.95rem; font-weight: 600; cursor: pointer;">
+        <button on:click="submitted = true" style="padding: 0.45rem 1.25rem; border-radius: 0.375rem; border: none; background: #3b82f6; color: white; font-size: 0.95rem; font-weight: 600; cursor: pointer;">
             Submit Form
         </button>
-        <button on:click="resetAll" style="padding: 0.45rem 1.25rem; border-radius: 0.375rem; border: 1px solid #d1d5db; background: white; font-size: 0.95rem; cursor: pointer; color: #64748b;">
+        <button on:click="personal.firstName = ''; personal.lastName = ''; personal.email = ''; personal.password = ''; personal.age = 25; personal.phone = ''; personal.website = ''; personal.bio = ''; prefs.country = 'us'; prefs.role = 'developer'; prefs.gender = 'other'; prefs.priority = 'medium'; prefs.newsletter = true; prefs.terms = false; prefs.darkTheme = false; prefs.notifications = true; prefs.search = ''; prefs.tags = ''; sliders.experience = 50; sliders.satisfaction = 75; sliders.volume = 30; rating = 3; extras.birthDate = '1995-06-15'; extras.startTime = '09:00'; extras.favColor = '#3b82f6'; submitted = false; apiResult = ''; quote.text = 'Click the button to load a quote'; quote.author = ''; showcaseCounter = 0; showcasePanel = false; todoDraft = ''; todoResult = 'Click Refresh TODOs or create one below...'; tabPersonal = true; tabPreferences = false; tabSliders = false; tabExtras = false; tabAPI = false; tabShowcase = false" style="padding: 0.45rem 1.25rem; border-radius: 0.375rem; border: 1px solid #d1d5db; background: white; font-size: 0.95rem; cursor: pointer; color: #64748b;">
             Reset All
         </button>
     </div>
