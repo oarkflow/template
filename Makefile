@@ -8,9 +8,11 @@ WASM_FILE := $(GENERATED_DIR)/spl.wasm
 WASM_GZ := $(GENERATED_DIR)/spl.wasm.gz
 WASM_EXEC := $(GENERATED_DIR)/wasm_exec.js
 BUILD_CACHE_DIR := $(ROOT_DIR)/.cache/go-build
+MOD_CACHE_DIR := $(ROOT_DIR)/.cache/go-mod
 XDG_CACHE_DIR := $(ROOT_DIR)/.cache
 TINYGO_OPT ?= z
 VERBOSE ?= 0
+TINYGO_HEARTBEAT_SECS ?= 15
 TINYGO_VERBOSE_FLAGS :=
 
 ifeq ($(VERBOSE),1)
@@ -28,6 +30,7 @@ help:
 	@echo "  make run-fiber    - run the Fiber showcase with browser wasm assets ready"
 	@echo "  make wasm         - build a KB-class wasm asset with TinyGo"
 	@echo "                    - use VERBOSE=1 for TinyGo command details"
+	@echo "                    - use TINYGO_HEARTBEAT_SECS=5 for more frequent progress logs"
 	@echo "  make wasm-go      - build a standard Go wasm asset (MB-class fallback)"
 	@echo "  make wasm-clean   - remove generated wasm assets"
 	@echo "  make clean        - remove generated wasm assets and local binaries"
@@ -60,27 +63,41 @@ run-fiber: fiber-wasm-assets
 wasm: wasm-tinygo
 
 wasm-go:
-	@mkdir -p "$(GENERATED_DIR)"
-	GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o "$(WASM_FILE)" ./cmd/splwasm
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" "$(WASM_EXEC)"
+	@mkdir -p "$(GENERATED_DIR)" "$(BUILD_CACHE_DIR)" "$(MOD_CACHE_DIR)" "$(XDG_CACHE_DIR)"
+	env XDG_CACHE_HOME="$(XDG_CACHE_DIR)" GOCACHE="$(BUILD_CACHE_DIR)" GOMODCACHE="$(MOD_CACHE_DIR)" \
+		GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o "$(WASM_FILE)" ./cmd/splwasm
+	cp "$$(env XDG_CACHE_HOME="$(XDG_CACHE_DIR)" GOCACHE="$(BUILD_CACHE_DIR)" GOMODCACHE="$(MOD_CACHE_DIR)" go env GOROOT)/lib/wasm/wasm_exec.js" "$(WASM_EXEC)"
 	gzip -kf -9 "$(WASM_FILE)"
 	@echo "Generated standard Go wasm assets:"
 	@ls -lh "$(WASM_FILE)" "$(WASM_GZ)" "$(WASM_EXEC)"
 
 wasm-tinygo:
-	@mkdir -p "$(GENERATED_DIR)" "$(BUILD_CACHE_DIR)" "$(XDG_CACHE_DIR)"
+	@mkdir -p "$(GENERATED_DIR)" "$(BUILD_CACHE_DIR)" "$(MOD_CACHE_DIR)" "$(XDG_CACHE_DIR)"
 	@echo "Building TinyGo wasm with -opt $(TINYGO_OPT) ..."
-	@echo "This step can be quiet for a while during TinyGo/LLVM compilation."
+	@echo "This step can be quiet for a while during TinyGo/LLVM compilation, so a heartbeat will print every $(TINYGO_HEARTBEAT_SECS)s."
 	@if [ "$(VERBOSE)" = "1" ]; then echo "Verbose TinyGo logging enabled."; fi
-	@env XDG_CACHE_HOME="$(XDG_CACHE_DIR)" GOCACHE="$(BUILD_CACHE_DIR)" \
-		tinygo build $(TINYGO_VERBOSE_FLAGS) -o "$(WASM_FILE)" -target wasm -opt $(TINYGO_OPT) ./cmd/splwasm || { \
+	@set -u; \
+	start=$$(date +%s); \
+	env XDG_CACHE_HOME="$(XDG_CACHE_DIR)" GOCACHE="$(BUILD_CACHE_DIR)" GOMODCACHE="$(MOD_CACHE_DIR)" \
+		tinygo build $(TINYGO_VERBOSE_FLAGS) -o "$(WASM_FILE)" -target wasm -opt $(TINYGO_OPT) ./cmd/splwasm & \
+	pid=$$!; \
+	status=0; \
+	while kill -0 $$pid 2>/dev/null; do \
+		sleep "$(TINYGO_HEARTBEAT_SECS)"; \
+		if kill -0 $$pid 2>/dev/null; then \
+			now=$$(date +%s); \
+			echo "TinyGo build still running... $$((now - start))s elapsed"; \
+		fi; \
+	done; \
+	wait $$pid || status=$$?; \
+	if [ $$status -ne 0 ]; then \
 		echo ""; \
 		echo "TinyGo build failed."; \
 		echo "If you need a KB-class wasm, use a TinyGo-compatible Go toolchain."; \
 		echo "Fallback: make wasm-go"; \
-		exit 1; \
-	}
-	cp "$$(tinygo env TINYGOROOT)/targets/wasm_exec.js" "$(WASM_EXEC)"
+		exit $$status; \
+	fi
+	cp "$$(env XDG_CACHE_HOME="$(XDG_CACHE_DIR)" GOCACHE="$(BUILD_CACHE_DIR)" GOMODCACHE="$(MOD_CACHE_DIR)" tinygo env TINYGOROOT)/targets/wasm_exec.js" "$(WASM_EXEC)"
 	gzip -kf -9 "$(WASM_FILE)"
 	@echo "Generated TinyGo wasm assets:"
 	@ls -lh "$(WASM_FILE)" "$(WASM_GZ)" "$(WASM_EXEC)"

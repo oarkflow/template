@@ -1,0 +1,128 @@
+@extends("layouts/main.html")
+@define("head") {
+    <style>
+        :root { --accent: #9333ea; --accent-strong: #7e22ce; --brand-soft: rgba(147, 51, 234, 0.14); }
+        .priority-urgent { background: rgba(190, 24, 93, 0.1); color: #be123c; }
+        .priority-high { background: rgba(251, 191, 36, 0.14); color: #b45309; }
+        .priority-medium { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+        .priority-low { background: rgba(16, 185, 129, 0.14); color: #047857; }
+    </style>
+}
+@define("content") {
+    <div class="page-stack">
+        <section class="hero-panel">
+            <div class="hero-grid">
+                <div>
+                    <span class="eyebrow">${heroKicker}</span>
+                    <h2 class="hero-title">Atlas Support keeps SLAs visible without hiding the human work.</h2>
+                    <p class="hero-copy">${heroSummary}</p>
+                    <div class="button-row">
+                        <a class="btn" href="/browser/support-hub">Preview in browser/WASM</a>
+                        <a class="btn btn-secondary" href="/demos">See all demo routes</a>
+                    </div>
+                </div>
+                <div class="panel" style="background: linear-gradient(135deg, rgba(147, 51, 234, 0.14), rgba(243, 232, 255, 0.88));">
+                    <div class="panel-title">Agent playbook for the shift</div>
+                    <ul class="checklist" style="margin-top: 1rem;">
+                        @for(item in playbook) {
+                            <li>
+                                <span class="checklist-mark">+</span>
+                                <div><strong>${item.title}</strong><br>${item.copy}</div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+            <div class="metrics-grid">
+                @for(metric in metrics) {
+                    <div class="metric-card">
+                        <div class="metric-label">${metric.label}</div>
+                        <div class="metric-value">${metric.value}</div>
+                        <div class="metric-detail">${metric.detail}</div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Live queue</div>
+                        <p class="panel-copy">Tickets ordered by urgency, SLA proximity, and account impact.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(ticket in queues) {
+                        <div class="list-item">
+                            <div class="list-row">
+                                <div class="list-title">${ticket.subject}</div>
+                                <span class='badge @if(ticket.priority == "Urgent") {priority-urgent} @elseif(ticket.priority == "High") {priority-high} @elseif(ticket.priority == "Medium") {priority-medium} @else {priority-low}'>${ticket.priority}</span>
+                            </div>
+                            <div class="list-meta">${ticket.meta}</div>
+                            <div class="list-meta"><strong>Owner:</strong> ${ticket.owner}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Macro library</div>
+                        <p class="panel-copy">Repeatable response paths that preserve clarity and reduce copy-paste drift.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(item in macros) {
+                        <div class="list-item">
+                            <div class="list-title">${item.name}</div>
+                            <div class="list-meta">${item.detail}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Agent workload</div>
+                        <p class="panel-copy">Who is holding the highest-impact work and what area they specialize in.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(agent in agents) {
+                        <div class="list-item">
+                            <div class="list-row">
+                                <div class="list-title">${agent.name}</div>
+                                <span class="status-pill">${agent.workload}</span>
+                            </div>
+                            <div class="list-meta">${agent.role}</div>
+                            <div class="list-meta"><strong>Focus:</strong> ${agent.focus}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Escalation timeline</div>
+                        <p class="panel-copy">Latest cross-functional moves affecting customer communication today.</p>
+                    </div>
+                </div>
+                <div class="timeline">
+                    @for(item in escalations) {
+                        <div class="timeline-item">
+                            <div class="timeline-time">${item.time}</div>
+                            <div class="timeline-title">${item.title}</div>
+                            <div class="timeline-copy">${item.copy}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+    </div>
+}

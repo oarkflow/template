@@ -546,6 +546,35 @@
     return wasmReady;
   }
 
+  async function loadBundle(options) {
+    if (options.bundle && typeof options.bundle === 'object') {
+      return options.bundle;
+    }
+    if (typeof options.bundleJSON === 'string' && options.bundleJSON.trim()) {
+      const inlineBundle = parseJSON(options.bundleJSON, null);
+      if (!inlineBundle) {
+        throw new Error('Invalid inline SPL bundle JSON');
+      }
+      return inlineBundle;
+    }
+    if (options.bundleElementID) {
+      const node = document.getElementById(options.bundleElementID);
+      if (!node) {
+        throw new Error(`Inline bundle element not found: ${options.bundleElementID}`);
+      }
+      const inlineBundle = parseJSON(node.textContent || '', null);
+      if (!inlineBundle) {
+        throw new Error(`Invalid inline SPL bundle in ${options.bundleElementID}`);
+      }
+      return inlineBundle;
+    }
+    if (!options.bundleURL) {
+      throw new Error('No SPL bundle source configured');
+    }
+    const response = await fetch(options.bundleURL);
+    return response.json();
+  }
+
   async function boot(options) {
     bootOptions = options || {};
     await ensureWasmLoaded();
@@ -553,11 +582,10 @@
     if (!root) {
       throw new Error('SPL browser root was not found');
     }
-    const [bundleResponse, dataResponse] = await Promise.all([
-      fetch(bootOptions.bundleURL),
+    const [bundle, dataResponse] = await Promise.all([
+      loadBundle(bootOptions),
       fetch(bootOptions.dataURL),
     ]);
-    const bundle = await bundleResponse.json();
     const data = await dataResponse.json();
     const html = core.init(
       JSON.stringify(bundle),
@@ -595,6 +623,7 @@
     if (!mount) return;
     window.SPLWASM.boot({
       rootSelector: '#' + (mount.id || 'app'),
+      bundleElementID: mount.getAttribute('data-spl-bundle-id') || '',
       bundleURL: mount.getAttribute('data-spl-bundle-url') || '/assets/spl-bundle.json',
       dataURL: mount.getAttribute('data-spl-data-url') || '/api/browser/page-data',
       entry: mount.getAttribute('data-spl-entry') || 'index.html',

@@ -1,0 +1,132 @@
+@extends("layouts/main.html")
+@define("head") {
+    <style>
+        :root { --accent: #0f766e; --accent-strong: #115e59; --brand-soft: rgba(15, 118, 110, 0.14); }
+        .severity-high { background: rgba(190, 24, 93, 0.1); color: #be123c; }
+        .severity-medium { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+        .severity-low { background: rgba(14, 165, 233, 0.12); color: #0369a1; }
+    </style>
+}
+@define("content") {
+    <div class="page-stack">
+        <section class="hero-panel">
+            <div class="hero-grid">
+                <div>
+                    <span class="eyebrow">${heroKicker}</span>
+                    <h2 class="hero-title">Northwind’s regional network at a glance.</h2>
+                    <p class="hero-copy">${heroSummary}</p>
+                    <div class="button-row">
+                        <a class="btn" href="/browser/ops-control">Preview in browser/WASM</a>
+                        <a class="btn btn-secondary" href="/demos">See all demo routes</a>
+                    </div>
+                </div>
+                <div class="panel" style="background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(204, 251, 241, 0.22));">
+                    <div class="panel-title">Regional lane brief</div>
+                    <p class="panel-copy" style="margin-top: 0.55rem;">The morning shift is focused on clearing APAC verification backlog before export cut-off, while Berlin sorter latency stays below customer impact thresholds.</p>
+                    <ul class="checklist" style="margin-top: 1rem;">
+                        @for(item in automations) {
+                            <li>
+                                <span class="checklist-mark">+</span>
+                                <div><strong>${item.title}</strong><br>${item.copy}</div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+            <div class="metrics-grid">
+                @for(metric in metrics) {
+                    <div class="metric-card">
+                        <div class="metric-label">${metric.label}</div>
+                        <div class="metric-value">${metric.value}</div>
+                        <div class="metric-detail">${metric.detail}</div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Active incidents</div>
+                        <p class="panel-copy">Queue prioritized by operational risk and cut-off pressure.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(incident in incidents) {
+                        <div class="list-item">
+                            <div class="list-row">
+                                <div class="list-title">${incident.title}</div>
+                                <span class='badge @if(incident.severity == "High") {severity-high} @elseif(incident.severity == "Medium") {severity-medium} @else {severity-low}'>${incident.severity}</span>
+                            </div>
+                            <div class="list-meta">${incident.meta}</div>
+                            <div class="list-meta"><strong>Owner:</strong> ${incident.owner}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Team on point</div>
+                        <p class="panel-copy">Current shift leads and the area each one is holding.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(member in team) {
+                        <div class="list-item">
+                            <div class="list-row">
+                                <div class="list-title">${member.name}</div>
+                                <span class="status-pill">${member.status}</span>
+                            </div>
+                            <div class="list-meta">${member.role}</div>
+                            <div class="list-meta"><strong>Focus:</strong> ${member.focus}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <div class="panel-title">Shipment visibility board</div>
+                    <p class="panel-copy">A route-level table for dispatch and exception management.</p>
+                </div>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Shipment</th>
+                        <th>Route</th>
+                        <th>Status</th>
+                        <th>ETA</th>
+                        <th>Load</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for(item in shipments) {
+                        <tr>
+                            <td><strong>${item.id}</strong></td>
+                            <td>${item.route}</td>
+                            <td>${item.status}</td>
+                            <td>${item.eta}</td>
+                            <td>${item.load}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        <section class="triple-grid">
+            @for(region in regions) {
+                <article class="panel">
+                    <div class="panel-title">${region.name}</div>
+                    <div class="metric-value" style="font-size: 1.7rem; margin-top: 0.55rem;">${region.throughput}</div>
+                    <p class="panel-copy" style="margin-top: 0.55rem;">${region.detail}</p>
+                </article>
+            }
+        </section>
+    </div>
+}

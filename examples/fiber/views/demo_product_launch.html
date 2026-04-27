@@ -1,0 +1,128 @@
+@extends("layouts/main.html")
+@define("head") {
+    <style>
+        :root { --accent: #2563eb; --accent-strong: #1d4ed8; --brand-soft: rgba(37, 99, 235, 0.14); }
+        .launch-proof {
+            padding: 1rem;
+            border-radius: 1rem;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(125, 211, 252, 0.14));
+            border: 1px solid rgba(96, 165, 250, 0.24);
+        }
+        .plan-card {
+            padding: 1.1rem;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.84);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+        .quote-card {
+            padding: 1.1rem;
+            border-radius: 1rem;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.92));
+            border: 1px solid rgba(96, 165, 250, 0.18);
+        }
+        .quote-card blockquote { font-size: 1.05rem; line-height: 1.7; letter-spacing: -0.01em; }
+        .plan-price { font-size: 2rem; font-weight: 750; letter-spacing: -0.05em; margin-top: 0.5rem; }
+    </style>
+}
+@define("content") {
+    <div class="page-stack">
+        <section class="hero-panel">
+            <div class="hero-grid">
+                <div>
+                    <span class="eyebrow">${heroKicker}</span>
+                    <h2 class="hero-title">NovaFlow helps cross-functional teams launch product bets without launch chaos.</h2>
+                    <p class="hero-copy">${heroSummary}</p>
+                    <div class="button-row">
+                        <a class="btn" href="/browser/product-launch">Preview in browser/WASM</a>
+                        <a class="btn btn-secondary" href="/demos">See all demo routes</a>
+                    </div>
+                </div>
+                <div class="launch-proof">
+                    <div class="section-title">Launch readiness snapshot</div>
+                    <p class="section-copy" style="margin-top: 0.55rem;">Marketing, product, support, and revenue all work from one narrative before the public announcement goes live.</p>
+                    <ul class="checklist" style="margin-top: 1rem;">
+                        @for(item in launchChecklist) {
+                            <li>
+                                <span class="checklist-mark">+</span>
+                                <div><strong>${item.title}</strong><br>${item.copy}</div>
+                            </li>
+                        }
+                    </ul>
+                    <div class="progress-track">
+                        <div class="progress-fill" style="width: 84%;"></div>
+                    </div>
+                    <p class="metric-detail">84% of launch-critical tasks are pre-approved before week-of-release work starts.</p>
+                </div>
+            </div>
+            <div class="metrics-grid">
+                @for(metric in metrics) {
+                    <div class="metric-card">
+                        <div class="metric-label">${metric.label}</div>
+                        <div class="metric-value">${metric.value}</div>
+                        <div class="metric-detail">${metric.detail}</div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="triple-grid">
+            @for(feature in features) {
+                <article class="panel">
+                    <div class="panel-title">${feature.title}</div>
+                    <p class="panel-copy" style="margin-top: 0.55rem;">${feature.copy}</p>
+                </article>
+            }
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Launch roadmap</div>
+                        <p class="panel-copy">A staged rollout that lets teams move from pilot to executive visibility without rewriting their process.</p>
+                    </div>
+                </div>
+                <div class="timeline">
+                    @for(step in roadmap) {
+                        <div class="timeline-item">
+                            <div class="timeline-time">${step.phase}</div>
+                            <div class="timeline-title">${step.title}</div>
+                            <div class="timeline-copy">${step.copy}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Pricing built for launch maturity</div>
+                        <p class="panel-copy">Clear packaging for teams testing their first process and for larger organizations coordinating many launches at once.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(plan in plans) {
+                        <div class="plan-card">
+                            <div class="list-row">
+                                <div class="list-title">${plan.name}</div>
+                                <span class="status-pill">${plan.highlight}</span>
+                            </div>
+                            <div class="plan-price">${plan.price}</div>
+                            <div class="list-meta">${plan.copy}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="split-grid">
+            @for(quote in testimonials) {
+                <article class="quote-card">
+                    <div class="metric-label">Customer perspective</div>
+                    <blockquote style="margin-top: 0.65rem;">"${quote.quote}"</blockquote>
+                    <p class="list-meta" style="margin-top: 0.85rem;"><strong>${quote.name}</strong> · ${quote.role}</p>
+                </article>
+            }
+        </section>
+    </div>
+}

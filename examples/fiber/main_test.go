@@ -6,29 +6,7 @@ import (
 )
 
 func demoRenderData() map[string]any {
-	return map[string]any{
-		"title": "SPL Template Engine - Interactive Demo",
-		"countries": []Country{
-			{Code: "us", Name: "United States", Region: "Americas"},
-			{Code: "uk", Name: "United Kingdom", Region: "Europe"},
-			{Code: "ca", Name: "Canada", Region: "Americas"},
-		},
-		"roles": []Role{
-			{Value: "developer", Label: "Developer", Permissions: []string{"read", "write", "deploy"}},
-			{Value: "designer", Label: "Designer", Permissions: []string{"read", "write"}},
-		},
-		"priorities": []Priority{PriorityLow, PriorityMedium, PriorityHigh},
-		"config": FormConfig{
-			MaxBioLength: 280,
-			MinAge:       0,
-			MaxAge:       150,
-			AllowSignup:  true,
-		},
-		"regionColors": map[string]string{
-			"Americas": "#3b82f6",
-			"Europe":   "#22c55e",
-		},
-	}
+	return demoPageData()
 }
 
 func TestFiberDemoRendersContent(t *testing.T) {
@@ -73,5 +51,52 @@ func TestFiberDemoRendersContentInSecureMode(t *testing.T) {
 	html := out.String()
 	if !strings.Contains(html, "data-spl-hydration") {
 		t.Fatalf("expected hydration payload in secure mode, got %q", html)
+	}
+}
+
+func TestAdditionalDemoPagesRender(t *testing.T) {
+	engine := New("./views")
+	engine.SSR(true)
+	engine.engine.Globals["siteName"] = "SPL Fiber Demo"
+	if err := engine.Load(); err != nil {
+		t.Fatalf("load views: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		data     map[string]any
+		want     string
+	}{
+		{name: "catalog", template: "demos", data: demoCatalogData(), want: "Different pages, complete UI"},
+		{name: "launch", template: "demo_product_launch", data: productLaunchPageData(), want: "NovaFlow helps cross-functional teams"},
+		{name: "ops", template: "demo_ops_control", data: opsControlPageData(), want: "Shipment visibility board"},
+		{name: "commerce", template: "demo_commerce_admin", data: commerceAdminPageData(), want: "Order risk board"},
+		{name: "support", template: "demo_support_hub", data: supportHubPageData(), want: "Atlas Support keeps SLAs visible"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			if err := engine.Render(&out, tc.template, tc.data); err != nil {
+				t.Fatalf("render %s: %v", tc.template, err)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatalf("expected %q in rendered %s", tc.want, tc.template)
+			}
+		})
+	}
+}
+
+func TestBrowserShellEmbedsBundle(t *testing.T) {
+	html := browserShellHTML("Demo", "interactive", "index.html", `{"entry":"index.html"}`)
+	if strings.Contains(html, "/assets/spl-bundle.json") {
+		t.Fatalf("expected inline bundle shell to avoid bundle fetch endpoint")
+	}
+	if !strings.Contains(html, `data-spl-bundle-id="spl-browser-bundle"`) {
+		t.Fatalf("expected inline bundle marker, got %q", html)
+	}
+	if !strings.Contains(html, `/api/browser/page-data/interactive`) {
+		t.Fatalf("expected page data endpoint, got %q", html)
 	}
 }

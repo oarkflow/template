@@ -1,0 +1,142 @@
+@extends("layouts/main.html")
+@define("head") {
+    <style>
+        :root { --accent: #b45309; --accent-strong: #92400e; --brand-soft: rgba(245, 158, 11, 0.16); }
+        .product-card {
+            padding: 1rem;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.84);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+        .product-card strong { font-size: 1rem; display: block; margin-top: 0.65rem; }
+    </style>
+}
+@define("content") {
+    <div class="page-stack">
+        <section class="hero-panel">
+            <div class="hero-grid">
+                <div>
+                    <span class="eyebrow">${heroKicker}</span>
+                    <h2 class="hero-title">Meridian’s daily command view for revenue, stock, and risky orders.</h2>
+                    <p class="hero-copy">${heroSummary}</p>
+                    <div class="button-row">
+                        <a class="btn" href="/browser/commerce-admin">Preview in browser/WASM</a>
+                        <a class="btn btn-secondary" href="/demos">See all demo routes</a>
+                    </div>
+                </div>
+                <div class="panel" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(255, 237, 213, 0.82));">
+                    <div class="panel-title">Restock decision lane</div>
+                    <div class="list" style="margin-top: 1rem;">
+                        @for(item in restocks) {
+                            <div class="list-item">
+                                <div class="list-title">${item.title}</div>
+                                <div class="list-meta">${item.copy}</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="metrics-grid">
+                @for(metric in metrics) {
+                    <div class="metric-card">
+                        <div class="metric-label">${metric.label}</div>
+                        <div class="metric-value">${metric.value}</div>
+                        <div class="metric-detail">${metric.detail}</div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Order risk board</div>
+                        <p class="panel-copy">The operations slice of today’s order queue that most needs human attention.</p>
+                    </div>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Customer</th>
+                            <th>Channel</th>
+                            <th>Status</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for(order in orders) {
+                            <tr>
+                                <td><strong>${order.id}</strong></td>
+                                <td>${order.customer}</td>
+                                <td>${order.channel}</td>
+                                <td>${order.status}</td>
+                                <td>${order.value}</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Conversion funnel</div>
+                        <p class="panel-copy">A quick read on what is happening between top-of-funnel attention and actual orders.</p>
+                    </div>
+                </div>
+                <div class="list">
+                    @for(step in funnel) {
+                        <div class="list-item">
+                            <div class="list-row">
+                                <div class="list-title">${step.step}</div>
+                                <span class="status-pill">${step.value}</span>
+                            </div>
+                            <div class="list-meta">${step.detail}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Merchandise spotlight</div>
+                        <p class="panel-copy">High-signal products that shape planning this week.</p>
+                    </div>
+                </div>
+                <div class="triple-grid">
+                    @for(product in products) {
+                        <div class="product-card">
+                            <span class="tag">${product.tag}</span>
+                            <strong>${product.name}</strong>
+                            <p class="list-meta">${product.detail}</p>
+                            <p class="list-meta"><strong>Inventory:</strong> ${product.inventory}</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Campaign schedule</div>
+                        <p class="panel-copy">The next three moments already queued for channel execution.</p>
+                    </div>
+                </div>
+                <div class="timeline">
+                    @for(campaign in campaigns) {
+                        <div class="timeline-item">
+                            <div class="timeline-time">${campaign.window}</div>
+                            <div class="timeline-title">${campaign.name}</div>
+                            <div class="timeline-copy">${campaign.detail}</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+    </div>
+}
