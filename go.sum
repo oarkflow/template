@@ -1,4 +1,6 @@
-github.com/oarkflow/interpreter v0.0.12 h1:iPCGp2/RDbdQRv+Q5yW8JaCEvXkmcmZkw3UiD7dcRps=
-github.com/oarkflow/interpreter v0.0.12/go.mod h1:sCqr8DQOh7zIjAmim7WtVygk79nxmpT0l0b8F5ZUmfI=
-github.com/oarkflow/spl v0.0.8 h1:iaaN+CkVnouJ49HFNDNp3GXsRsqfL/aycy/aOLtjMic=
-github.com/oarkflow/spl v0.0.8/go.mod h1:af4auQeIB36unk6aDHf0txCvj2TCb2xRmly7faIsqg8=
+github.com/oarkflow/convert v0.0.6 h1:uHTcyGe8D0Uo21E4xmaXPdhdEvVc1fYWC0Lqcj3N+fw=
+github.com/oarkflow/convert v0.0.6/go.mod h1:2uCH13m+EopoRto8cwDTFbW9MCOBVYvFDr13wG4ckoo=
+github.com/oarkflow/interpreter v0.0.13 h1:xs1xy1Ae8q2YVwWTh+r7ioapYZ5xd0M+F4eRkB0Bk3Y=
+github.com/oarkflow/interpreter v0.0.13/go.mod h1:qnR1ShKGNV+pw5aYKez+MWadrtC1Hdoes3QSVfU+DY8=
+github.com/oarkflow/spl v0.0.10 h1:wW7mRb2cj+QaTfGaPy4y5w9euWRQYgLvs+OY8AxO1oQ=
+github.com/oarkflow/spl v0.0.10/go.mod h1:EXelN3UVmCabyWWOKWdSNuGRuh8Jl4yQhoNISnDYayY=

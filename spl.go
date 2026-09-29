@@ -78,9 +78,7 @@ func NewSPL(directory string, extension ...string) *SPLEngine {
 func (e *SPLEngine) Config(cfg SPLConfig) *SPLEngine {
 	e.cfg = cfg
 	e.engine.BaseDir = cfg.Directory
-	if cfg.SecureMode {
-		e.engine.SecureMode = true
-	}
+	e.engine.SecureMode = cfg.SecureMode
 	e.engine.AutoEscape = true
 	e.engine.HydrationRuntimeURL = cfg.HydrationRuntimeURL
 	for k, v := range cfg.Globals {
